@@ -839,7 +839,8 @@ button.primary:active:not(:disabled){transform:translateY(1px);box-shadow:0 1px 
         </div>
         <div id="montBox" class="vid" hidden style="display:grid;gap:10px">
           <label class="check"><input id="montOn" type="checkbox"> <strong style="font-size:16px">Montage (vidéos et interviews)</strong></label>
-          <p class="note" id="montNote">Photos et vidéos enchaînées en fondu, avec le son. Le titre reste sur la première vignette, « Plus d’infos » sur la dernière. Chaque interview reçoit son synthé. Les sous-titres narratifs s’affichent seulement sur les vignettes d’illustration, jamais pendant une interview, ni avec le titre, ni avec « Plus d’infos ». Le verbatim n’est pas utilisé dans un montage.</p>
+          <p class="note" id="montNote">Photos et vidéos enchaînées en fondu, avec le son. Le titre reste sur la première vignette, « Plus d’infos » sur la dernière. Chaque interview reçoit son synthé. Les sous-titres narratifs s’affichent seulement sur les vignettes d’illustration, jamais pendant une interview ni avec le titre ; ils peuvent passer au-dessus de « Plus d’infos ». Le verbatim n’est pas utilisé dans un montage.</p>
+          <label class="check" id="narrPPWrap" hidden><input id="narrPP" type="checkbox"> <span>Un sous-titre par photo, affiché toute la photo<small style="display:block;opacity:.8">Décoché : les sous-titres sont répartis automatiquement, 6 s chacun.</small></span></label>
           <div id="mJoinWrap" hidden><span class="segLbl">Enchaînement des vignettes</span><div class="seg seg2" id="mJoin"><button type="button" data-v="fondu">Transition (0,8 s)</button><button type="button" data-v="coupe">Coupe franche</button></div></div>
           <label class="f" id="montTrWrap" hidden>Transition entre les vignettes<select id="montTr"></select></label>
           <label class="f" id="montSynWrap"><span class="row">Hauteur du synthé des interviews <span class="count" id="cMontSyn"></span></span><input id="montSyn" type="range" min="-80" max="320" step="10"></label>
@@ -1192,7 +1193,7 @@ button.primary:active:not(:disabled){transform:translateY(1px);box-shadow:0 1px 
           </div>
         </details>
       </section>
-      <p class="ver">Atelier Instantané Pro · version 10.31</p>
+      <p class="ver">Atelier Instantané Pro · version 10.33</p>
     </div>
   </div>
 </div>
@@ -3825,6 +3826,7 @@ function renderEnd(ctx){
 }
 /* LAYER : 'all' = image complète ; 'base' = habillage sans la photo ; 'title' = bandes seules (vidéo : couches mises en cache) */
 let LAYER = 'all';
+var FE_HIDE = null; /* version 10.32 : aperçu d’une vignette du montage, le titre seulement sur la première, « Plus d’infos » seulement sur la dernière */
 function renderCar(ctx, idx, p){
   if (isEnd(idx)) return renderEnd(ctx);
   if (LAYER === 'title') return null;
@@ -3910,11 +3912,12 @@ function narrOp(c){ return c.op != null ? Math.max(0.2, Math.min(1, +c.op)) : 0.
 function narrCfg(p){ const c = Object.assign({ on:false, items:[{ t:'', hl:'' }], st:1, y:null, op:null, sz:null }, (p && p.narr) || {}); c.st = [1, 2, 3].includes(+c.st) ? +c.st : 1; if (!Array.isArray(c.items) || !c.items.length) c.items = [{ t:'', hl:'' }]; return c; }
 function narrItems(p){ return narrCfg(p).items.filter(it => (it.t || '').trim()); }
 function narrOn(p){ if (p && p === pages[0] && nvOn()) return narrItems(p).length > 0; return story() && narrCfg(p).on && narrItems(p).length > 0 && !verbOn(p); } /* version 8.9 : le verbatim prend leur place ; version 10.25 : en Narration visuelle, les sous-titres du volet Texte, sans la case */
-const NARR_FADE = 0.4, NARR_SIZE = 50;
-/* rythme des sous-titres narratifs : chacun 4,5 s à l’écran, puis 3,5 s d’image seule ; le nombre suit la durée
+const NARR_FADE = 0.8, NARR_SIZE = 50, NARR_BREATH = 0.3; /* version 10.33 : fondu adouci de 0,8 s (0,4 s auparavant) ; 0,3 s d’image seule autour des transitions */
+function narrEase(k){ k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); }
+/* rythme des sous-titres narratifs : chacun 6 s à l’écran (fondus compris), puis 2,5 s d’image seule ; le nombre suit la durée (version 10.33)
    version 7.8 : fenêtre stricte, entre la disparition du titre (et de « Plus d’infos » sur un extrait court)
    et l’arrivée de « Plus d’infos » à la fin (ou de la signature) ; aucun sous-titre ne déborde, ceux qui ne tiennent pas ne s’affichent pas */
-const NARR_SHOW = 4.5, NARR_GAP = 3.5, NARR_MIN = 2.5, NARR_GAPMIN = 0.8, NARR_MARGIN = 0.3;
+const NARR_SHOW = 6, NARR_GAP = 2.5, NARR_MIN = 5, NARR_GAPMIN = 1.5, NARR_MARGIN = 0.3; /* version 10.33 : 6 s à l’écran (4,5 s auparavant), 5 s au moins ; s’il n’y a pas la place, il y en a moins */
 function narrWin(D){
   const a = TITLE_HOLD + TITLE_FADE; let b = D || 0;
   if (sigOn() && sigFits(D)) b = Math.min(b, D - SIG_DUR - NARR_MARGIN);
@@ -3973,7 +3976,7 @@ function drawNarrAt(ctx, p, t, D, k0){
   if (t === undefined){ if (!isVid(p.img) || !(playing || recording)) return; t = p.img.currentTime - (p.vStart || 0); }
   for (const s of narrTimes(p, D)){
     if (t < s.a || t > s.b) continue;
-    let a = Math.max(0, Math.min(1, (t - s.a) / NARR_FADE, (s.b - t) / NARR_FADE));
+    let a = narrEase(Math.min((t - s.a) / NARR_FADE, (s.b - t) / NARR_FADE)); /* version 10.33 : fondu adouci */
     /* version 10.30 : les sous-titres peuvent passer pendant « Plus d’infos » */
     a *= (k0 === undefined ? 1 : k0); if (a <= 0) return;
     const rise = Math.round((1 - Math.min(1, (t - s.a) / NARR_FADE)) * 18); /* légère montée à l’apparition */
@@ -3984,7 +3987,7 @@ function montNarrDraw(ctx, slides, t, k0){
   const p = Object.assign({}, pages[0], { media:'image' });
   for (const q of narrTimes(pages[0], slides.total)){
     if (t < q.a || t > q.b) continue;
-    let a = Math.max(0, Math.min(1, (t - q.a) / NARR_FADE, (q.b - t) / NARR_FADE));
+    let a = narrEase(Math.min((t - q.a) / NARR_FADE, (q.b - t) / NARR_FADE)); /* version 10.33 : fondu adouci */
     a = Math.min(a, 1 - montTitleA(slides, t)) * k0; if (a <= 0) return;
     const rise = Math.round((1 - Math.min(1, (t - q.a) / NARR_FADE)) * 18);
     ctx.save(); ctx.globalAlpha = a; drawNarrBlock(ctx, p, q.it, rise); ctx.restore(); return;
@@ -4194,7 +4197,7 @@ function renderOne0(ctx, p){
   ctx.save(); ctx.globalAlpha = LAYER === 'all' ? titleAlpha(p) : 1; /* story vidéo : le titre s’efface en fondu après 6 s */
   const verbIt = (LAYER === 'all' || LAYER === 'over') && verbStatic(p); /* version 8.9 : photo, ou vidéo pendant le réglage du verbatim */
   const peekIt = LAYER === 'all' && !verbIt ? narrPeekOn(p) : null;
-  const drawBands = LAYER !== 'more' && !peekIt && !verbIt, drawMore = LAYER !== 'title' && !verbIt;
+  const drawBands = LAYER !== 'more' && !peekIt && !verbIt && !(FE_HIDE && FE_HIDE.tit), drawMore = LAYER !== 'title' && !verbIt && !(FE_HIDE && FE_HIDE.more);
   ctx.font = f(700, L.size); const cap = capH(ctx, L.size);
   const dy = Math.round(p.dy || 0);
   const B = G.base + dy;
@@ -4703,7 +4706,7 @@ function filmK(){ return story() && filmEdit > 0 && filmEdit < pages.length && !
 function edP(){ const p = pages[filmK() || sel]; const s = spP(); return s ? curSlide(halfObj(s, half)) : p; }
 function filmCfg(){
   if (montOn()) return { d:4, f:montF() }; /* version 9.83 : coupe franche possible */
-  const d = Math.max(1.5, Math.min(8, +settings.filmDur || 3));
+  const d = Math.max(1.5, Math.min(8, +settings.filmDur || 8)); /* version 10.33 : 8 s par défaut */
   const f = Math.max(0.2, Math.min(1.5, d / 2, +settings.filmFade || 0.6));
   return { d, f };
 }
@@ -4934,7 +4937,7 @@ function withCredits(slides, noCr){
 const MONT_F = 0.8, MONT_VMAX = 60, /* version 9.28 : 60 s par vignette (30 auparavant), choix d’Eric */ MONT_MAX = 15, MONT_SYN0 = 1560, MONT_AMB = 0.3; /* synthé : bas à 1560 px, 80 px au-dessus de la zone couverte par Instagram */
 function montOn(){ const p = pages[0]; return story() && !!p && (!!p.mont || !!p.nv) && !p.split; } /* version 10.24 : la Narration visuelle s’appuie sur le montage */
 function mType(p){ return p && p.mtype === 'itv' && isVid(p.img) ? 'itv' : 'illu'; }
-function mPhotoDur(i){ if (nvOn()) return nvDur(i); const p = pages[i], def = (i === 0 || i === pages.length - 1) ? 6 : 4; return Math.max(2, Math.min(12, +(p && p.mdur) || def)); }
+function mPhotoDur(i){ if (nvOn()) return nvDur(i); const p = pages[i], def = 8; /* version 10.33 : 8 s par photo par défaut (4 s, 6 s pour la première et la dernière auparavant) */ return Math.max(2, Math.min(12, +(p && p.mdur) || def)); }
 function mDurOf(i){ const p = pages[i]; return p && isVid(p.img) ? Math.max(1, Math.min(MONT_VMAX, p.vDur || 1)) : mPhotoDur(i); }
 function montLen(){ const n = pages.length; let s = 0; for (let i = 0; i < n; i++) s += mDurOf(i); return s - Math.max(0, n - 1) * montF(); }
 function montSynY(){ const v = +settings.montSynY; return isFinite(v) && v ? Math.max(1240, Math.min(1640, v)) : MONT_SYN0; }
@@ -4969,21 +4972,25 @@ function montTimes(){
   return { st, total, tEnd, tFade, mA, mB, syn, me };
 }
 /* version 9.33 : sous-titres narratifs dans le montage, seulement sur les vignettes d’illustration (fondus entre illustrations compris),
-   jamais pendant une interview, ni avec le titre, ni avec « Plus d’infos », ni sur la signature ou la page de fin */
+   jamais pendant une interview ni avec le titre, ni sur la signature ou la page de fin ; version 10.33 : au-dessus de « Plus d’infos » permis */
 function montNarrSlots(){
-  const T = montTimes(), f0 = montF(), n = pages.length, end = moreOnNow() ? Math.min(T.me, T.mA) : T.me, out = [];
-  for (let k = 0; k < n; k++){ if (mType(pages[k]) === 'itv') continue; /* suite de vignettes d’illustration : le fondu entre deux illustrations est permis, jamais celui qui mène à une interview */
-    let m = k; while (m + 1 < n && mType(pages[m + 1]) !== 'itv') m++;
-    const x = T.st[k], y = T.st[m], a = Math.max(x.start + (k > 0 ? f0 : 0), T.tEnd + NARR_MARGIN), b = Math.min(y.start + y.dur - (m < n - 1 ? f0 : 0), end - NARR_MARGIN);
-    if (b - a >= NARR_MIN) out.push([a, b]); k = m; }
+  const T = montTimes(), f0 = montF(), n = pages.length, end = T.me, out = []; /* version 10.33 : les sous-titres peuvent passer au-dessus de « Plus d’infos » */
+  for (let k = 0; k < n; k++){ if (mType(pages[k]) === 'itv') continue; /* version 10.33 : chaque vignette d’illustration a sa fenêtre, après la transition d’arrivée et avant celle de départ */
+    const x = T.st[k], a = Math.max(x.start + (k > 0 ? f0 : 0) + NARR_BREATH, T.tEnd + NARR_MARGIN), b = Math.min(x.start + x.dur - (k < n - 1 ? f0 : 0) - NARR_BREATH, end - NARR_MARGIN);
+    if (b - a >= NARR_MIN) out.push([a, b]); }
   return out;
 }
-function montNarrRoom(){ return montNarrSlots().reduce((q, [a, b]) => q + narrRoom(b - a), 0); }
+/* version 10.33 : par défaut, un sous-titre par photo d’illustration, dans l’ordre, affiché toute la photo (hors transitions) ;
+   case décochée : répartition automatique, 6 s par sous-titre, plusieurs sur une photo longue */
+function narrPP(){ return settings.narrPP !== false; }
+function montNarrRoom(){ if (narrPP()) return montNarrSlots().length; return montNarrSlots().reduce((q, [a, b]) => q + narrRoom(b - a), 0); }
 function montNarrPlan(N){ /* répartition sur les vignettes d’illustration, en donnant la priorité aux plus longues */
+  if (narrPP()) return montNarrSlots().slice(0, Math.max(0, N));
   const Wn = montNarrSlots(), room = Wn.map(([a, b]) => narrRoom(b - a)), cnt = Wn.map(() => 0);
   for (let m = 0, M = Math.min(N, room.reduce((q, x) => q + x, 0)); m < M; m++){ let best = -1, bv = -1; Wn.forEach(([a, b], j) => { if (cnt[j] < room[j] && (b - a) / (cnt[j] + 1) > bv){ bv = (b - a) / (cnt[j] + 1); best = j; } }); if (best < 0) break; cnt[best]++; }
   const out = []; Wn.forEach(([a, b], j) => narrPlan(cnt[j], a, b).forEach(x => out.push(x))); return out;
 }
+{ const c = $('narrPP'); if (c) c.addEventListener('change', () => { settings.narrPP = c.checked; saveSettings(); layersDirty = true; try { narrUI(true); } catch(e){} try { filmInfo(); } catch(e){} redraw(); scheduleSave(); }); } /* version 10.33 */
 /* ---------- version 10.25 : Narration visuelle simplifiée ----------
    Mode facultatif de la Story (case dans la carte Film). Il s’appuie sur le montage (photos, transitions, effet Ken Burns) sans rien changer
    au montage classique, au film classique ni aux sous-titres classiques quand la case est décochée.
@@ -5058,7 +5065,8 @@ function montSynDraw(ctx, slides, t, cut){
 }
 function drawFilmEdit(ctx){ /* aperçu d’une photo du film en cours de recadrage, avec l’habillage de la story */
   ctx.clearRect(0, 0, W, H); drawPhoto(ctx, pages[filmK()]);
-  LAYER = 'over'; try { renderOne(ctx, pages[0]); } finally { LAYER = 'all'; }
+  if (montOn()){ const k = filmK(); FE_HIDE = { tit:k > 0, more:k < pages.length - 1 }; } /* version 10.32 */
+  LAYER = 'over'; try { renderOne(ctx, pages[0]); } finally { LAYER = 'all'; FE_HIDE = null; }
   if (montOn() && mType(pages[filmK()]) === 'itv'){ const S = montSynCanvas(pages[filmK()]); if (S) ctx.drawImage(S.cv, 0, 0); }
 }
 const KB_AUTO = ['in', 'lr', 'out', 'rl'];
@@ -5072,9 +5080,10 @@ function trOf(S, j){ if (S.mont){ const v = S[j].p && S[j].p.mtr; return v && v 
    Zoom avant : de la photo entière vers le sujet ; zoom arrière : du sujet vers la photo entière ; déplacement : départ cadré sur le sujet,
    dans le sens choisi, ou dans l’autre quand le sujet est déjà au bord. Le cadrage n’est recentré sur le sujet que si la photo n’a pas été cadrée
    à la main (cadrage d’origine) ; un cadrage choisi dans « Cadrer » est respecté. Un visage n’est jamais coupé par le zoom. */
-const KB_DEF = 0.18;
+const KB_DEF = 0.24; /* version 10.33 : 24 % par défaut (18 % auparavant), mouvement plus visible */
+if (!settings.kbMig1033){ if (Math.abs(+settings.filmKB2 - 0.18) < 1e-6) settings.filmKB2 = KB_DEF; settings.kbMig1033 = true; try { saveSettings(); } catch(e){} }
 function kbAmt(){ const v = settings.filmKB2; if (v === undefined) return settings.filmKB === 0 ? 0 : KB_DEF; return Math.max(0, Math.min(0.35, +v || 0)); }
-function kbDurK(d){ return Math.max(0.8, Math.min(1.5, (+d || 6) / 6)); }
+function kbDurK(d){ return Math.max(1, Math.min(1.5, (+d || 6) / 6)); } /* version 10.33 : une vignette courte garde au moins l’amplitude réglée (0,8 auparavant) */
 function kbEase(u){ u = Math.max(0, Math.min(1, u)); return 0.55 * u + 0.45 * u * u * (3 - 2 * u); }
 /* repérage automatique du sujet, une fois par photo (image réduite à 160 px) */
 function kbDetect(p){
@@ -5921,6 +5930,7 @@ function cutBtnUI(){
   if ($('mCutRow')){ const s = !!mp && cutAble(mp); $('mCutRow').hidden = !s; $('mCutInfo').textContent = s ? cutNoteOf(mp) : ''; }
   if ($('vCut')){ const s = !!vp && cutAble(vp) && !isSplit(vp); $('vCut').hidden = !s; $('vCutInfo').hidden = !s; $('vCutInfo').textContent = s ? cutNoteOf(vp) : ''; }
   if ($('montTrWrap')){ $('montTrWrap').hidden = !montOn() || montCut(); $('montTr').value = settings.montTr || 'fondu'; }
+  if ($('narrPPWrap')){ $('narrPPWrap').hidden = !montOn() || nvOn(); $('narrPP').checked = narrPP(); } /* version 10.33 */
   if ($('mJoinWrap')){ const on = montOn(); $('mJoinWrap').hidden = !on; $('mJoin').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String((x.dataset.v === 'coupe') === montCut()))); }
 }
 { const fi = filmInfo; filmInfo = function(){ const r = fi.apply(this, arguments); try { cutBtnUI(); } catch(e){} return r; }; }
@@ -6795,7 +6805,7 @@ function bvFit(){ const wr = bvCv.parentNode, aw = wr.clientWidth, ah = wr.clien
 window.addEventListener('resize', () => { if (bv.open) bvFit(); });
 function bvPaint(){
   if (!bv.open) return;
-  bv.off.width = W; bv.off.height = H; render(bv.off.getContext('2d'), sel, pages[sel]);
+  bv.off.width = W; bv.off.height = H; { const c2 = bv.off.getContext('2d'); if (filmK()) drawFilmEdit(c2); else render(c2, sel, pages[sel]); } /* version 10.32 : la vignette choisie du film, pas la première */
   bvCv.width = W; bvCv.height = H; bvClampView(); bvFit();
   bvCtx.save(); bvCtx.setTransform(bv.z, 0, 0, bv.z, -bv.x * bv.z, -bv.y * bv.z); bvCtx.imageSmoothingQuality = 'high'; bvCtx.drawImage(bv.off, 0, 0);
   const B = bvBoxes(bvP()), lw = 4 / bv.z;
