@@ -8,3 +8,8 @@ Copie stable d'Instantané Pro pour l'usage quotidien et le partage. La version 
 3. Envoyer les fichiers sur GitHub : Netlify publie tout seul.
 
 Le script refait toujours les mêmes transformations (boutons « mon IA », bouton Aide, manifeste, icône, brouillons protégés) et s'arrête si la version Claude a changé à un endroit qu'il modifie.
+
+## Instantané To Go (Atelier perso), version web
+- Branche `togo` de ce dépôt, publiée sur le site Netlify `instantane-togo-ericleon`.
+- Mettre à jour : récupérer l'index.html, le logo.png et le dossier accueil/ du perso (version Claude) dans `source-perso/`, puis
+  `python3 outils/perso/build_netlify_perso.py source-perso SORTIE`, copier SORTIE à la racine de la branche `togo` et envoyer sur GitHub.
