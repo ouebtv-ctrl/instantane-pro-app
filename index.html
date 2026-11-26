@@ -1171,7 +1171,8 @@ button.primary,.btn.primary,#shDrawer button.primary,#shDrawer #importBtn,#shDra
               <div><span class="segLbl">Style du titre</span><div class="seg seg2" id="tStyleSeg"><button type="button" data-v="overlay">Overlay</button><button type="button" data-v="bandes">Bandes</button></div></div>
               <div id="ovFields" style="display:grid;gap:14px" hidden>
                 <label class="f"><span class="row">Accroche, au-dessus du titre (facultative) <span class="count" id="cAcc"></span></span>
-                  <input id="ovAcc" type="text" maxlength="70" placeholder="« Une citation » ou le sujet (vide : exemple dans l’aperçu, jamais exporté)"></label>
+                  <input id="ovAcc" type="text" maxlength="28" placeholder="« Une citation » ou le sujet (vide : exemple dans l’aperçu, jamais exporté)"></label>
+                <label class="check" id="ovAccOnWrap"><input id="ovAccOn" type="checkbox" checked> <span>Afficher l’accroche<small style="display:block;opacity:.8">Décochée : l’accroche est gardée mais n’apparaît ni dans l’aperçu ni dans les fichiers.</small></span></label>
                 <div class="actions"><button id="btnOvAcc" class="small" type="button">Proposer une accroche</button></div>
                 <p class="note" id="ovAccNote"></p>
                 <label class="f"><span class="row">Inclinaison de l’accroche <span class="count" id="cTilt"></span></span>
@@ -1393,7 +1394,7 @@ button.primary,.btn.primary,#shDrawer button.primary,#shDrawer #importBtn,#shDra
           </div>
         </details>
       </section>
-      <p class="ver">Atelier Instantané · version 204</p>
+      <p class="ver">Atelier Instantané · version 205</p>
     </div>
   </div>
 </div>
@@ -4208,8 +4209,9 @@ function ovWrap(ctx, text, s, maxw){ /* lignes équilibrées : pas de mot seul e
 }
 /* version 123 : accroche vide = accroche d’exemple dans l’aperçu seulement, pour voir l’effet des fonds ; jamais sur l’export */
 const OV_PH = '« Votre accroche ici »';
-function ovPh(p){ return PV && !String((p && p.ovAcc) || '').trim(); }
-function ovAccTxt(p){ const a = String((p && p.ovAcc) || '').trim(); return a || (ovPh(p) ? OV_PH : ''); }
+const ACC_MAX = 28; /* version 205 : accroche de 28 caractères au plus (70 auparavant), demande d’Eric */
+function ovPh(p){ return PV && !(p && p.ovAccOff) && !String((p && p.ovAcc) || '').trim(); }
+function ovAccTxt(p){ if (p && p.ovAccOff) return ''; /* version 205 : accroche masquée, gardée */ const a = String((p && p.ovAcc) || '').trim(); return a || (ovPh(p) ? OV_PH : ''); }
 function ovLayout(ctx, p){
   const wt = ovW(), maxw = Math.min(820, zoneX().w - 40);
   let sT = Math.round(OV_BASE * ovK(settings.ovTitSz)), sA = Math.round(OV_BASE * 0.86 * ovK(settings.ovAccSz)), acc, tit;
@@ -7433,7 +7435,7 @@ function ovUI(){
   $('ovAccSz').value = Math.round(a * 100); $('cOvA').textContent = `${Math.round(a * 100)} %`;
   $('ovTitSz').value = Math.round(t * 100); $('cOvT').textContent = `${Math.round(t * 100)} %`;
   const lh = Math.round(ovLh() / 1.13 * 100); $('ovLh').value = lh; $('cOvL').textContent = lh === 100 ? 'normal' : `${lh} %`;
-  if (!car() && !isEnd(sel) && pages[sel]){ if (document.activeElement !== $('ovAcc')) $('ovAcc').value = pages[sel].ovAcc || ''; $('cAcc').textContent = `${$('ovAcc').value.length} car.`; tiltUI(); }
+  if (!car() && !isEnd(sel) && pages[sel]){ if (document.activeElement !== $('ovAcc')) $('ovAcc').value = pages[sel].ovAcc || ''; $('cAcc').textContent = `${$('ovAcc').value.length} / ${ACC_MAX} car.`; $('ovAccOn').checked = !pages[sel].ovAccOff; tiltUI(); }
   ovLinesUI(); ovColsUI();
   { const bn = document.querySelector('#narrBgSeg [data-v=noir]'); if (bn){ const t = ovNarrOn() ? 'Couleur' : 'Noir'; if (bn.textContent !== t) bn.textContent = t; } }
 }
@@ -7473,7 +7475,8 @@ function tiltUI(){ const p = pages[sel]; if (!p || !$('ovTilt')) return; const v
 $('ovGap').addEventListener('input', e => { if (car() || isEnd(sel) || !pages[sel]) return; pages[sel].ovGap = +e.target.value || 0; tiltUI(); redraw(); scheduleSave(); });
 $('ovTilt').addEventListener('input', e => { if (car() || isEnd(sel) || !pages[sel]) return; const v = +e.target.value; pages[sel].ovTilt = v || 0; tiltUI(); redraw(); scheduleSave(); });
 $('btnTilt0').onclick = () => { if (!pages[sel]) return; pages[sel].ovTilt = 0; pages[sel].ovGap = 0; tiltUI(); redraw(); scheduleSave(); };
-$('ovAcc').addEventListener('input', e => { if (car() || isEnd(sel)) return; pages[sel].ovAcc = e.target.value; $('cAcc').textContent = `${e.target.value.length} car.`; redraw(); });
+$('ovAcc').addEventListener('input', e => { if (car() || isEnd(sel)) return; pages[sel].ovAcc = e.target.value; $('cAcc').textContent = `${e.target.value.length} / ${ACC_MAX} car.`; redraw(); });
+$('ovAccOn').addEventListener('change', e => { if (car() || isEnd(sel) || !pages[sel]) return; pages[sel].ovAccOff = !e.target.checked; layersDirty = true; redraw(); scheduleSave(); }); /* version 205 : afficher ou masquer l’accroche sans l’effacer */
 $('narrBgSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; settings.narrBg = b.dataset.v; saveSettings(); narrUI(true); if (narrPv < 0 && narrOf(pages[0]).length) narrPv = 0; narrUI(true); redraw(); });
 if (settings.nOp55 && !settings.nOp100){ if (Math.abs((+settings.narrOp || 1) - 0.55) < 0.001) settings.narrOp = 1; settings.nOp100 = true; try { saveSettings(); } catch(e){} } /* version 199 : le perso revient à 100 % par défaut (55 % seulement dans le Pro) */
 $('narrSz').addEventListener('input', e => { settings.narrSz = parseInt(e.target.value, 10) / 100; saveSettings(); $('cNarrSz').textContent = e.target.value === '100' ? 'normale' : `${e.target.value} %`; layersDirty = true; if (narrPv < 0 && narrOf(pages[0]).length){ narrPv = 0; narrUI(true); } else narrUI(true); redraw(); });
@@ -8450,7 +8453,7 @@ async function dbDo(dmode, fn, st0){
   const db = await idb(), name = st0 || 'drafts';
   return new Promise((res, rej) => { const tx = db.transaction(name, dmode); const st = tx.objectStore(name); const r = fn(st); tx.oncomplete = () => res(r && r.result); tx.onerror = () => rej(tx.error); });
 }
-const FIELDS = ['kbF','nv','nvn','nvc','nvr','nvx','nvChk','nvWait','nvFmt','nvMig','mv','waPost','waLink','noTit','fbOff','fb','mtr','psp','spR','solo','soloD','vtp','vtp34','vth','vfmt','dyAlt','verb','coverOff','vst','vcol','kicker','title','body','theme','text','hl','narr','narrY','dy','credit','alt','cx','cy','zoom','blurs','neutral','media','vStart','vDur','vSound','mid','lock','ts','kb','tr','win','rs','rsSrc','split','subTop','syn','spDy','spKB','cur','spTr','spJoin','mont','mtype','mcut','mdur','msn','msf','msy','ad','rot','flash','ovAcc','ovFlip','ovTilt','ovGap','tTilt'];
+const FIELDS = ['kbF','nv','nvn','nvc','nvr','nvx','nvChk','nvWait','nvFmt','nvMig','mv','waPost','waLink','noTit','fbOff','fb','mtr','psp','spR','solo','soloD','vtp','vtp34','vth','vfmt','dyAlt','verb','coverOff','vst','vcol','kicker','title','body','theme','text','hl','narr','narrY','dy','credit','alt','cx','cy','zoom','blurs','neutral','media','vStart','vDur','vSound','mid','lock','ts','kb','tr','win','rs','rsSrc','split','subTop','syn','spDy','spKB','cur','spTr','spJoin','mont','mtype','mcut','mdur','msn','msf','msy','ad','rot','flash','ovAcc','ovAccOff','ovFlip','ovTilt','ovGap','tTilt'];
 const SUBK = ['ad','rot','cx','cy','zoom','blurs','media','vStart','vDur','vSound','mid','lock','win','rs','rsSrc','cur','kb','tr'];
 /* version 16 : chaque photo et chaque vidéo est rangée une seule fois dans le navigateur (en données brutes, plus fiable sur iPhone) ;
    le travail en cours et les brouillons ne gardent que leur référence */
@@ -8878,7 +8881,7 @@ function narrSpec(n){ return `- "subs" = exactement ${n} sous-titres narratifs, 
 const OV_ACCSPEC = `- "accroche" = petite ligne affichée au-dessus du titre, 40 caractères maximum : soit une courte citation reprise MOT POUR MOT de l’article, entre guillemets « », soit le sujet ou le lieu en quelques mots. Elle ne répète pas le titre et n’en reprend pas les mots.`;
 function ovSpecs(){ return ovOn() ? `\n${OV_ACCSPEC}\n- Le titre s’affiche en grosses bandes sous l’accroche : "text" fait 70 caractères maximum et tient sur 3 lignes d’environ 25 caractères.` : ''; }
 function ovShape(){ return ovOn() ? ',"accroche":"…"' : ''; }
-function ovApply(p, res){ if (p && res && ovOn() && res.accroche !== undefined){ const a = clean(res.accroche, 70); if (a) p.ovAcc = a; } }
+function ovApply(p, res){ if (p && res && ovOn() && res.accroche !== undefined){ const a = clean(res.accroche, ACC_MAX); if (a){ p.ovAcc = a; p.ovAccOff = false; } } }
 function promptOne(withPhoto){
   const nn = narrWanted(), what = story() ? 'une story verticale (Instagram, TikTok)' : 'un visuel unique (one-shot, format 3:4)';
   const keep = $('keepTitle').checked && !$('keepWrap').hidden;
@@ -9782,6 +9785,7 @@ const IAX = (() => {
       if (m === 'story' || m === 'oneshot' || m === 'verbatim'){
         if (hasT){
           iaLen(`Titre ${T.num}`, TT, MAXC, R); iaHl(TT, T.f.couleur).miss.forEach(w => R.warn.push(`Titre ${T.num} : « ${w} » n’est pas dans le titre, il ne sera pas en couleur.`));
+          { const A = iaOne(T.f.accroche); if (A && [...A].length > ACC_MAX) R.warn.push(`Titre ${T.num} : accroche de ${[...A].length} caractères, ${ACC_MAX} au plus : elle ne sera pas importée.`); } /* version 205 */
           if (TH){ iaLen('Thématique', TH, m === 'oneshot' ? LIM.themeOne : LIM.themeStory, R); if ([...TH].length > 22) thWarn = true; }
           what.push(`titre ${T.num}${TH ? ' et thématique' : ''}`); title = true;
         }
@@ -9857,7 +9861,7 @@ const IAX = (() => {
     const p = pages[0], T = D.titres[t], TT = tOf(T), TH = iaOne(D.commun.thematique);
     if (!TT || (keep && !titlePh(p))) return;
     p.text = TT; p.hl = nl(iaHl(TT, T.f.couleur).ok);
-    { const A = iaOne(T.f.accroche); if (A && (m === 'story' || m === 'oneshot')) p.ovAcc = A; } /* version 122 : accroche du style Overlay */
+    { const A = iaOne(T.f.accroche); if (A && [...A].length <= ACC_MAX && (m === 'story' || m === 'oneshot')){ p.ovAcc = A; p.ovAccOff = false; } } /* version 122 : accroche du style Overlay ; version 205 : 28 caractères au plus, affichée d’office */
     if (TH){ p.theme = TH.toLocaleUpperCase('fr-FR'); if (m === 'verbatim' && !D.vbc.thematique) delete p.vth; }
   }
   function fill(m, D, t, keep, g){
