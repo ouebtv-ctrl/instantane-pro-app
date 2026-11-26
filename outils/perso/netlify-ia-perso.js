@@ -216,5 +216,28 @@ ${src.slice(0, 30000)}`;
   };
 
   /* pour les tests */
-  window.__nl = { prepPrompt, titlePrompt, capPrompt };
+  /* ---------- « Proposer une accroche » devient « Copier la demande pour mon IA » (26 novembre 2026) ---------- */
+  function accPrompt(){
+    const p = pages[sel] || {}, prev = String(p.ovAcc || '').trim(), tit = String(p.text || '').trim();
+    return `Tu es journaliste web. Écris l’accroche affichée au-dessus du titre de ${story() ? 'ma story verticale' : 'mon visuel unique (one-shot)'}.
+
+${RULES}${consignesBlock()}
+${OV_ACCSPEC}
+- Le titre affiché sous l’accroche est : « ${tit} ».${prev ? `\n- Propose une accroche différente de celle-ci : « ${prev} ».` : ''}
+
+CE QUE TU RENDS : uniquement l’accroche, sur une seule ligne, 28 caractères au plus, sans phrase avant ni après.
+
+ARTICLE
+${articleText() || tit}`;
+  }
+  { const b = $('btnOvAcc');
+    if (b){ b.textContent = 'Copier la demande pour mon IA';
+      b.onclick = () => {
+        const n = $('ovAccNote'), say = (m, k) => { n.textContent = m; n.className = 'note' + (k ? ' ' + k : ''); };
+        if (!articleText() && !String((pages[sel] || {}).text || '').trim()){ say('Collez d’abord l’article, ou écrivez le titre.', 'err'); return; }
+        copyIA(accPrompt(), 'Demande d’accroche copiée.');
+        say('Demande copiée. Collez-la dans votre IA, puis collez sa réponse dans la case « Accroche » (28 caractères au plus).', 'good');
+      }; } }
+
+  window.__nl = { prepPrompt, titlePrompt, capPrompt, accPrompt };
 })();
