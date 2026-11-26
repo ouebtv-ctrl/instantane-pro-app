@@ -1193,7 +1193,7 @@ button.primary:active:not(:disabled){transform:translateY(1px);box-shadow:0 1px 
           </div>
         </details>
       </section>
-      <p class="ver">Atelier Instantané Pro · version 10.35</p>
+      <p class="ver">Atelier Instantané Pro · version 10.36</p>
     </div>
   </div>
 </div>
@@ -8925,7 +8925,7 @@ ${src.slice(0, 30000)}`, { cache:false });
    par le code de l’outil, sans aucun appel à Claude. Format commun à l’Atelier Pro et à l’Atelier perso. */
 const IA_SECS = {
   COMMUN:{ keys:['lieu', 'date', 'thematique'] },
-  TITRE:{ max:3, keys:['bande1', 'bande2', 'bande3', 'titre', 'couleur'] },
+  TITRE:{ max:3, keys:['bande1', 'bande2', 'bande3', 'titre', 'couleur', 'accroche'] }, /* version 10.36 : « accroche » acceptée (propre au perso), ignorée ici */
   'SOUS-TITRE':{ max:8, keys:['texte', 'couleur'] },
   CARROUSEL:{ max:10, keys:['texte', 'couleur', 'surtitre', 'titre', 'detail'] },
   VERBATIMS:{ keys:['thematique'] },
@@ -9050,6 +9050,7 @@ const IAX = (() => {
     const ign = [];
     if (D.commun.thematique && !(C.whatsapp && Object.keys(D.wa).length)) ign.push('thématique'); /* version 10.11 : la thématique du bloc remplit l’étiquette du visuel WhatsApp */
     if (D.titres.some(x => x.f.titre || x.f.couleur)) ign.push('titre et mots en couleur du titre');
+    if (D.titres.some(x => x.f.accroche)) ign.push('accroche'); /* version 10.36 */
     if (D.car.some(x => x.f.surtitre || x.f.titre || x.f.detail)) ign.push('surtitre, titre et texte des pages de carrousel');
     if (D.vbc.thematique) ign.push('thématique des verbatims');
     const capT = iaClean(D.leg.texte), capOn = C.cap && !!capT;
