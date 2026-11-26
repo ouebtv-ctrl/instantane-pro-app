@@ -1394,7 +1394,7 @@ button.primary,.btn.primary,#shDrawer button.primary,#shDrawer #importBtn,#shDra
           </div>
         </details>
       </section>
-      <p class="ver">Atelier Instantané · version 205</p>
+      <p class="ver">Atelier Instantané · version 206</p>
     </div>
   </div>
 </div>
@@ -7463,8 +7463,8 @@ RÉPONSE : uniquement un objet JSON, sans autre texte, de la forme
 
 ARTICLE
 ${articleText()}`, { cache:false });
-    const a = clean(res && res.accroche, 70); if (!a) throw { code:'invalid_json' };
-    p.ovAcc = a; $('ovAcc').value = a; redraw(); scheduleSave();
+    const a = clean(res && res.accroche, ACC_MAX); if (!a) throw { code:'invalid_json' };
+    p.ovAcc = a; p.ovAccOff = false; /* version 206 : 28 caractères au plus, accroche affichée */ $('ovAcc').value = a; redraw(); scheduleSave();
     say('Accroche proposée. Appuyez encore pour une autre proposition.', 'good');
   } catch(e){ say((e && ERR[e.code]) || 'L’accroche n’a pas pu être proposée. Réessayez.', 'err'); }
   finally { b.disabled = false; b.textContent = 'Proposer une accroche'; }
@@ -8878,7 +8878,7 @@ const TITLESPEC = `- "theme" = thématique du sujet en 1 à 3 mots (ex. "SANTÉ"
 function narrWanted(){ if (nvOn()) return Math.min(8, Math.max(1, (pages.length - 1) * NV_KMAX)); if (story() && montOn() && pages.length >= 2) return Math.min(8, montNarrRoom()); const D = storyD(); if (!story() || !D) return 0; const [a, b] = narrWin(D); if (b - a < 2) return 0; return Math.max(1, Math.min(8, narrRoom(b - a), narrFit(a, b))); } /* vidéo courte : un seul sous-titre */
 function narrSpec(n){ return `- "subs" = exactement ${n} sous-titres narratifs, affichés l’un après l’autre après le titre, qui racontent la suite de l’information dans l’ordre sans répéter le titre : chacun une phrase complète de ${ovNarrOn() ? 70 : 100} caractères maximum, avec ses "highlights" (0 à 2 mots-clés copiés EXACTEMENT depuis son texte, sans ponctuation autour).`; }
 /* ---------- version 122 : Claude remplit aussi l’accroche du style « Overlay » ---------- */
-const OV_ACCSPEC = `- "accroche" = petite ligne affichée au-dessus du titre, 40 caractères maximum : soit une courte citation reprise MOT POUR MOT de l’article, entre guillemets « », soit le sujet ou le lieu en quelques mots. Elle ne répète pas le titre et n’en reprend pas les mots.`;
+const OV_ACCSPEC = `- "accroche" = petite ligne affichée au-dessus du titre, 28 caractères maximum, espaces compris (version 206) : soit une courte citation reprise MOT POUR MOT de l’article, entre guillemets « », soit le sujet ou le lieu en quelques mots. Elle ne répète pas le titre et n’en reprend pas les mots.`;
 function ovSpecs(){ return ovOn() ? `\n${OV_ACCSPEC}\n- Le titre s’affiche en grosses bandes sous l’accroche : "text" fait 70 caractères maximum et tient sur 3 lignes d’environ 25 caractères.` : ''; }
 function ovShape(){ return ovOn() ? ',"accroche":"…"' : ''; }
 function ovApply(p, res){ if (p && res && ovOn() && res.accroche !== undefined){ const a = clean(res.accroche, ACC_MAX); if (a){ p.ovAcc = a; p.ovAccOff = false; } } }
@@ -11026,7 +11026,30 @@ ${src.slice(0, 30000)}`;
   };
 
   /* pour les tests */
-  window.__nl = { prepPrompt, titlePrompt, capPrompt };
+  /* ---------- « Proposer une accroche » devient « Copier la demande pour mon IA » (26 novembre 2026) ---------- */
+  function accPrompt(){
+    const p = pages[sel] || {}, prev = String(p.ovAcc || '').trim(), tit = String(p.text || '').trim();
+    return `Tu es journaliste web. Écris l’accroche affichée au-dessus du titre de ${story() ? 'ma story verticale' : 'mon visuel unique (one-shot)'}.
+
+${RULES}${consignesBlock()}
+${OV_ACCSPEC}
+- Le titre affiché sous l’accroche est : « ${tit} ».${prev ? `\n- Propose une accroche différente de celle-ci : « ${prev} ».` : ''}
+
+CE QUE TU RENDS : uniquement l’accroche, sur une seule ligne, 28 caractères au plus, sans phrase avant ni après.
+
+ARTICLE
+${articleText() || tit}`;
+  }
+  { const b = $('btnOvAcc');
+    if (b){ b.textContent = 'Copier la demande pour mon IA';
+      b.onclick = () => {
+        const n = $('ovAccNote'), say = (m, k) => { n.textContent = m; n.className = 'note' + (k ? ' ' + k : ''); };
+        if (!articleText() && !String((pages[sel] || {}).text || '').trim()){ say('Collez d’abord l’article, ou écrivez le titre.', 'err'); return; }
+        copyIA(accPrompt(), 'Demande d’accroche copiée.');
+        say('Demande copiée. Collez-la dans votre IA, puis collez sa réponse dans la case « Accroche » (28 caractères au plus).', 'good');
+      }; } }
+
+  window.__nl = { prepPrompt, titlePrompt, capPrompt, accPrompt };
 })();
 })();
 </script>
