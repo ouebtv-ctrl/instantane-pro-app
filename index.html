@@ -587,6 +587,23 @@ button.primary:active:not(:disabled){transform:translateY(1px);box-shadow:0 1px 
 #bigView button:not(.primary){background:linear-gradient(180deg,rgba(255,255,255,.85),rgba(221,244,255,.6));color:#124965;border:1px solid #fff;min-height:44px;border-radius:10px}
 .toast{background:#fff;color:#0b4a63}
 @media (min-width:900px){.shHead{margin:0 -16px}#shDrawer{border-radius:0}}
+/* version 10.38 : fenêtre de correction rapide du titre (deux touchers sur le titre dans l’aperçu) */
+#qeWrap{position:fixed;left:0;top:0;width:100%;height:100%;z-index:9999;background:rgba(0,0,0,.35);display:flex;align-items:flex-end;justify-content:center}
+#qeBox{width:100%;max-width:560px;box-sizing:border-box;background:var(--panel);color:var(--ink);border-radius:16px 16px 0 0;padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 12px);display:grid;gap:8px;box-shadow:0 -4px 18px rgba(0,0,0,.3);font-family:var(--font)}
+#qeBox .qeHd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#qeBox .qeHd strong{font-size:16px}
+#qeNo{background:none!important;border:0!important;box-shadow:none!important;color:var(--accent);font-size:16px;padding:8px 4px;min-height:40px}
+#qeOk{background:var(--accent)!important;color:var(--accent-ink)!important;border:0!important;border-radius:10px;font-size:16px;font-weight:700;padding:8px 20px;min-height:40px}
+#qeBox .qeF{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+#qeBox .qeF span{display:flex;justify-content:space-between;gap:8px}#qeBox .qeF em{font-style:normal}
+#qeBox input,#qeBox textarea{font:16px/1.35 var(--font);color:var(--input-ink);background:var(--input-bg);border:1.5px solid var(--input-line);border-radius:10px;padding:9px 10px;width:100%;box-sizing:border-box;margin:0}
+#qeBox textarea{resize:none;min-height:66px}
+#qeBox input:focus,#qeBox textarea:focus{outline:none;border-color:var(--accent)}
+#qePv{display:block;width:100%;border-radius:10px;background:#111}
+#qeBox .qeNav{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+#qeBox .qeNav button{min-height:36px;padding:6px 12px;border-radius:9px;font-size:14px}
+#qeBox .qeNav span{text-align:center;flex:1}
+#qeBox em.over{color:var(--warn);font-weight:700}
 </style>
 <style id="ui925">
 /* ===== version 9.25 : Photos, Film, Réglages, menu des modes, aperçu agrandi ===== */
@@ -1193,7 +1210,7 @@ button.primary:active:not(:disabled){transform:translateY(1px);box-shadow:0 1px 
           </div>
         </details>
       </section>
-      <p class="ver">Atelier Instantané Pro · version 10.36</p>
+      <p class="ver">Atelier Instantané Pro · version 10.40</p>
     </div>
   </div>
 </div>
@@ -3933,12 +3950,24 @@ function narrPlan(n, a, b){
   return Array.from({ length:n }, (_, i) => [a + i * (show + gap), Math.min(b, a + i * (show + gap) + show)]);
 }
 function narrFit(a, b){ return Math.max(0, Math.floor((b - Math.min(a + 1, b) + NARR_GAP + 0.5) / (NARR_SHOW + NARR_GAP))); } /* une demi-seconde de tolérance sur les pauses */
+/* version 10.37 : story (vidéo ou film photo) : aucun sous-titre pendant « Plus d’infos » ; tous les sous-titres ont la même durée (6 s), jamais écourtés ;
+   s’il n’y a pas la place, l’image seule entre deux sous-titres se resserre (2,5 s puis 1,5 s au moins), puis les derniers sont retirés.
+   Une story trop courte pour 6 s garde un seul sous-titre s’il reste 4,5 s au moins. */
+function narrWinS(D){ const w = narrWin(D); if (moreOnNow() && D > MORE_SHORT) w[1] = Math.min(w[1], D - MORE_FROM_END - NARR_MARGIN); return w; }
+function narrShowFix(L){ return L >= NARR_SHOW ? NARR_SHOW : L >= NARR_MIN ? L : 0; }
+function narrPlanFix(n, a, b){
+  const show = narrShowFix(b - a); if (!show || n <= 0) return [];
+  n = Math.min(n, Math.floor((b - a + NARR_GAPMIN + 1e-6) / (show + NARR_GAPMIN)));
+  if (b - a - 1 >= n * show + (n - 1) * NARR_GAPMIN) a += 1; /* une seconde d’image seule après le titre quand la place le permet */
+  const gap = n > 1 ? Math.max(NARR_GAPMIN, Math.min(NARR_GAP, (b - a - n * show) / (n - 1))) : 0;
+  return Array.from({ length:n }, (_, i) => [a + i * (show + gap), a + i * (show + gap) + show]);
+}
 function narrTimes(p, D){
   if (nvOn()){ const I = narrCfg(p).items; return nvTimes().map((x, k) => x ? { it:I[k], a:x.from, b:x.to } : null).filter(Boolean); } /* version 10.25 : Narration visuelle, répartition d’office */
   if (montOn() && pages.length >= 2){ const it = narrItems(p); return montNarrPlan(it.length).map(([x, y], k) => ({ it:it[k], a:x, b:y })); }
-  const items = narrItems(p), n = items.length, [a, b] = narrWin(D);
+  const items = narrItems(p), n = items.length, [a, b] = narrWinS(D);
   if (!n) return [];
-  return narrPlan(n, a, b).map(([x, y], k) => ({ it:items[k], a:x, b:y }));
+  return narrPlanFix(n, a, b).map(([x, y], k) => ({ it:items[k], a:x, b:y })); /* version 10.37 */
 }
 function narrBottom(p, h){ const c = narrCfg(p), G = GEO.story; if (c.y === 'mid') return Math.round(H / 2 + h / 2); if (c.y != null) return c.y; return G.base + Math.round(p.dy || 0); }
 function narrLayout(ctx, it, k){
@@ -3998,7 +4027,7 @@ function storyLenD(){ const p = pages[0]; if (!p) return 0; if (montOn() && page
 function soloAv(){ const p = pages[0]; return story() && pages.length === 1 && !!p && !!p.img && !isVid(p.img) && !p.split && !p.mont; }
 function soloOn(){ return soloAv() && !!pages[0].solo; }
 function soloDur(){ const p = pages[0]; return Math.max(5, Math.min(30, +(p && p.soloD) || 10)); }
-function narrWanted(){ if (nvOn()) return Math.min(8, Math.max(1, (pages.length - 1) * NV_KMAX)); if (!story()) return 0; if (montOn() && pages.length >= 2) return Math.min(8, montNarrRoom()); const D = storyLenD(); if (!D) return 0; const [a, b] = narrWin(D); if (b - a < 2) return 0; return Math.max(1, Math.min(8, narrRoom(b - a), narrFit(a, b))); } /* vidéo courte : un seul sous-titre */
+function narrWanted(){ if (nvOn()) return Math.min(8, Math.max(1, (pages.length - 1) * NV_KMAX)); if (!story()) return 0; if (montOn() && pages.length >= 2) return Math.min(8, montNarrRoom()); const D = storyLenD(); if (!D) return 0; const [a, b] = narrWinS(D), room = narrPlanFix(8, a, b).length; if (!room) return 0; return Math.max(1, Math.min(8, room, narrFit(a, b))); } /* version 10.37 */ /* vidéo courte : un seul sous-titre */
 function narrPeekOn(p){ if (!story() || narrPeek < 0 || !narrCfg(p).on || verbOn(p)) return null; const it = narrCfg(p).items[narrPeek]; return it && (it.t || '').trim() ? it : null; }
 /* version 8.9 : verbatim (citation) en story ; version 8.10 : un seul modèle, validé par Eric (guillemet carré jaune, citation blanche sur dégradé noir, nom et fonction en bandes) ;
    bord gauche fixe à 90 px, limite droite 950 px (réglage validé par Eric sur Instagram), bas du bloc à 1640 px par défaut ;
@@ -6271,7 +6300,7 @@ function narrUI(){
   $('narrY').value = yv; $('cNarrY').textContent = c.y == null ? 'comme le titre' : c.y === 'mid' ? 'au milieu' : `${yv} px`;
   const n = narrItems(p).length;
   const drop = n - tm.length;
-  $('narrNote').textContent = !n ? 'Écrivez un premier sous-titre.' : D ? (tm.length ? `${drop > 0 ? `La durée ne laisse la place qu’à ${tm.length} sous-titre${tm.length > 1 ? 's' : ''} entre le titre et « Plus d’infos » : ${drop > 1 ? `les ${drop} derniers ne s’affichent pas` : 'le dernier ne s’affiche pas'}. ` : ''}${tm.length} sous-titre${tm.length > 1 ? 's' : ''} après le titre, chacun ${fmtS(Math.round((tm[0].b - tm[0].a) * 10) / 10)} à l’écran${tm.length > 1 ? `, puis ${fmtS(Math.round((tm[1].a - tm[0].b) * 10) / 10)} d’image seule` : ''} (${narrWanted() || 1} conseillé${narrWanted() > 1 ? 's' : ''} pour cette durée). Touchez un sous-titre pour le voir dans l’aperçu.` : 'La vidéo est trop courte pour placer un sous-titre entre le titre et « Plus d’infos ».') : 'Les sous-titres défilent sur une vidéo ou un film photo. Touchez un sous-titre pour le voir dans l’aperçu.';
+  $('narrNote').textContent = !n ? 'Écrivez un premier sous-titre.' : D ? (tm.length ? `${drop > 0 ? `La durée ne laisse la place qu’à ${tm.length} sous-titre${tm.length > 1 ? 's' : ''} entre le titre et « Plus d’infos » : ${drop > 1 ? `les ${drop} derniers ne s’affichent pas` : 'le dernier ne s’affiche pas'}. Le sous-titre ${tm.length} termine la story : vérifiez qu’il se suffit à lui-même. ` : ''}${tm.length} sous-titre${tm.length > 1 ? 's' : ''} après le titre, chacun ${fmtS(Math.round((tm[0].b - tm[0].a) * 10) / 10)} à l’écran${tm.length > 1 ? `, puis ${fmtS(Math.round((tm[1].a - tm[0].b) * 10) / 10)} d’image seule` : ''} (${narrWanted() || 1} conseillé${narrWanted() > 1 ? 's' : ''} pour cette durée). Touchez un sous-titre pour le voir dans l’aperçu.` : 'La vidéo est trop courte pour placer un sous-titre entre le titre et « Plus d’infos ».') : 'Les sous-titres défilent sur une vidéo ou un film photo. Touchez un sous-titre pour le voir dans l’aperçu.';
   if (nvOn()) $('narrNote').textContent = n ? 'Narration visuelle : les sous-titres sont répartis d’office sur le film, dans leur ordre, indépendamment des photos (le détail est dans la carte Film).' : 'Narration visuelle : écrivez les sous-titres ici, ou importez un bloc avec [SOUS-TITRE]. Ils seront répartis d’office sur le film.'; /* version 10.25 */
 }
 function narrSet(fn){ const p = pages[0]; if (!p) return; const c = narrCfg(p); fn(c); p.narr = c; narrUI(); verbUI(); redraw(); }
@@ -6607,7 +6636,7 @@ function mvMask(rec, off){ const k = 0.25, w = Math.ceil(W * k), h = Math.ceil(H
 function mvAt(D, x, y){ const cx = Math.round(x / 4), cy = Math.round(y / 4); for (let j = -5; j <= 5; j++) for (let i = -5; i <= 5; i++){ const X = cx + i, Y = cy + j; if (X < 0 || Y < 0 || X >= D.width || Y >= D.height) continue; if (D.data[(Y * D.width + X) * 4 + 3] > 30) return true; } return false; }
 function mvBox(D){ let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1; for (let y = 0; y < D.height; y++) for (let x = 0; x < D.width; x++) if (D.data[(y * D.width + x) * 4 + 3] > 30){ if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   return x1 < 0 ? null : { x:x0 * 4, y:y0 * 4, w:(x1 - x0 + 1) * 4, h:(y1 - y0 + 1) * 4 }; }
-function mvVis(k, p){ try { if (k === 'syn') return synOn(p); if (k === 'vb') return vb() ? sel > 0 : verbOn(p); if (k === 'car') return car() || wa(); } catch(e){} return true; }
+function mvVis(k, p){ try { if (k === 'tit' && story() && pages[0] && narrPeekOn(pages[0])) return false; if (k === 'tit' && story()){ const t = tlNow(); if (t >= 0 && titleAlpha(pages[0], t) < 0.05) return false; } /* version 10.40 : titre caché, pas touchable */ if (k === 'syn') return synOn(p); if (k === 'vb') return vb() ? sel > 0 : verbOn(p); if (k === 'car') return car() || wa(); } catch(e){} return true; }
 function mvHit(p, c){ for (const k of MV_ORD){ const r = MVREC[k]; if (!r || r.p !== p || !mvVis(k, p)) continue; if (mvAt(mvMask(r), c.x, c.y)) return k; } return null; }
 function mvGet(p, k){ p.mv = p.mv || {}; return p.mv[k] = p.mv[k] || { dx:0, dy:0, s:1 }; }
 function mvBase(){ const P = [...mvPts.values()], m = mvGet(mvDrag.p, mvDrag.k); mvDrag.c0 = { x:P.reduce((a, q) => a + q.x, 0) / P.length, y:P.reduce((a, q) => a + q.y, 0) / P.length };
@@ -6631,15 +6660,15 @@ document.addEventListener('pointerdown', e => {
   if (filmRun && !mvDrag){ e.stopPropagation(); e.preventDefault(); if (!filmHeld || bigOpen) return;
     const c = toCanvas(e), q = mvFilmNarr(c); if (!q) return; const m = mvGet(q.p, 'narr');
     if (m.ax == null){ m.ax = Math.round(W / 2); m.ay = Math.round(c.y); }
-    mvDrag = { p:q.p, k:'narr', film:true }; mvPts.clear(); mvPts.set(e.pointerId, c); mvBase(); return; }
-  if (mvDrag){ e.stopPropagation(); e.preventDefault(); if (mvPts.size < 2){ mvPts.set(e.pointerId, toCanvas(e)); mvBase(); } return; } /* deuxième doigt : pincer pour la taille */
+    mvDrag = { p:q.p, k:'narr', film:true, t0:performance.now(), x0:e.clientX, y0:e.clientY, mx:0 }; mvPts.clear(); mvPts.set(e.pointerId, c); mvBase(); return; }
+  if (mvDrag){ e.stopPropagation(); e.preventDefault(); mvDrag.multi = true; if (mvPts.size < 2){ mvPts.set(e.pointerId, toCanvas(e)); mvBase(); } return; } /* deuxième doigt : pincer pour la taille */
   if (fbDrag || spDrag !== null || bigOpen || playing || blurMode || pts.size || isEnd(sel) || (filmRun && !filmHeld)) return;
-  const p = pages[sel]; if (!p) return; const c = toCanvas(e), k = mvHit(p, c); if (!k) return;
+  const p = pages[sel]; if (!p) return; const c = toCanvas(e), k = mvHit(p, c) || qnHitPaused(p, c); if (!k) return; /* version 10.40 : sous-titre affiché dans la vidéo en pause */
   e.stopPropagation(); e.preventDefault(); const m = mvGet(p, k);
   if (m.ax == null){ const r = MVREC[k], b = r ? mvBox(mvMask(r, true)) : null; m.ax = b ? Math.round(b.x + b.w / 2) : Math.round(W / 2); m.ay = b ? Math.round(b.y + b.h / 2) : Math.round(H / 2); }
-  mvDrag = { p, k }; mvPts.clear(); mvPts.set(e.pointerId, c); mvBase();
+  mvDrag = { p, k, t0:performance.now(), x0:e.clientX, y0:e.clientY, mx:0 }; mvPts.clear(); mvPts.set(e.pointerId, c); mvBase(); /* version 10.38 : départ noté pour reconnaître un simple toucher */
 }, true);
-window.addEventListener('pointermove', e => { if (!mvDrag || !mvPts.has(e.pointerId)) return; e.preventDefault(); mvPts.set(e.pointerId, toCanvas(e));
+window.addEventListener('pointermove', e => { if (!mvDrag || !mvPts.has(e.pointerId)) return; e.preventDefault(); mvPts.set(e.pointerId, toCanvas(e)); if (mvDrag.x0 != null) mvDrag.mx = Math.max(mvDrag.mx || 0, Math.hypot(e.clientX - mvDrag.x0, e.clientY - mvDrag.y0));
   const P = [...mvPts.values()], cx = P.reduce((a, q) => a + q.x, 0) / P.length, cy = P.reduce((a, q) => a + q.y, 0) / P.length, m = mvGet(mvDrag.p, mvDrag.k);
   let dx = mvDrag.dx0 + cx - mvDrag.c0.x, dy = mvDrag.dy0 + cy - mvDrag.c0.y;
   if (mvDrag.k !== 'syn' && mvDrag.k !== 'car' && Math.abs(m.ax + dx - W / 2) < 16) dx = W / 2 - m.ax; /* aimanté au milieu */
@@ -6647,11 +6676,132 @@ window.addEventListener('pointermove', e => { if (!mvDrag || !mvPts.has(e.pointe
   if (P.length > 1 && mvDrag.d0 > 20){ const d = Math.hypot(P[0].x - P[1].x, P[0].y - P[1].y); m.s = Math.round(Math.max(0.5, Math.min(2.2, mvDrag.s0 * d / mvDrag.d0)) * 100) / 100; }
   if (mvDrag.film){ mvFilmRef(); return; } layersDirty = true; redraw(); }, { passive:false });
 { const end = e => { if (!mvDrag || !mvPts.has(e.pointerId)) return; mvPts.delete(e.pointerId); if (mvPts.size){ mvBase(); return; }
-    const p = mvDrag.p, k = mvDrag.k, film = mvDrag.film; mvDrag = null; const m = p.mv && p.mv[k];
+    const p = mvDrag.p, k = mvDrag.k, film = mvDrag.film, D0 = mvDrag; mvDrag = null; const m = p.mv && p.mv[k];
+    const tap = !D0.multi && D0.t0 != null && (D0.mx || 0) < 12 && performance.now() - D0.t0 < 400; /* version 10.38 ; version 10.40 : aussi dans le film en pause */
+    if (tap && m){ m.dx = D0.dx0; m.dy = D0.dy0; m.s = D0.s0; } /* un toucher ne déplace rien */
+    if (tap && k === 'narr'){ const now = performance.now(), ni = qnIdx(); /* version 10.40 : deux touchers sur un sous-titre */
+      if (mvTap && mvTap.narr && now - mvTap.t < 450 && Math.hypot(e.clientX - mvTap.x, e.clientY - mvTap.y) < 45){ const i = mvTap.ni >= 0 ? mvTap.ni : ni; mvTap = null; if (p.mv && p.mv[k] && !mvMoved(p.mv[k])) delete p.mv[k]; if (p.mv && !Object.keys(p.mv).length) delete p.mv; if (i >= 0) qnOpen(i); return; }
+      mvTap = { p, narr:true, ni, t:now, x:e.clientX, y:e.clientY }; if (p.mv && p.mv[k] && !mvMoved(p.mv[k])) delete p.mv[k]; if (p.mv && !Object.keys(p.mv).length) delete p.mv; mvUI(); return; } /* un toucher ne quitte pas la pause */
+    if (tap && !film && (k === 'tit' || k === 'car')){ const now = performance.now(); /* version 10.39 : aussi le bloc de texte (carrousel, WhatsApp) */ if (mvTap && mvTap.p === p && now - mvTap.t < 450 && Math.hypot(e.clientX - mvTap.x, e.clientY - mvTap.y) < 45){ mvTap = null; qeOpen(p); } else mvTap = { p, t:now, x:e.clientX, y:e.clientY }; } else mvTap = null;
     if (film){ if (m && !mvMoved(m)) delete p.mv[k]; if (p.mv && !Object.keys(p.mv).length) delete p.mv; layersDirty = true; mvFilmRef(); scheduleSave(); mvUI(); return; }
     if (m){ if (!mvMoved(m)) delete p.mv[k]; else { const r = MVREC[k]; m.box = r ? mvBox(mvMask(r)) : null; } if (!Object.keys(p.mv).length) delete p.mv; }
     layersDirty = true; redraw(); scheduleSave(); mvUI(); };
   window.addEventListener('pointerup', end); window.addEventListener('pointercancel', end); }
+/* ---------- version 10.38 (repris du perso 208 à 211) : deux touchers sur le titre dans l’aperçu ouvrent une petite fenêtre en bas,
+   que l’iPhone remonte au-dessus du clavier, pour corriger le titre sans passer par le volet Texte : les trois bandes (story, one-shot)
+   ou le titre (carrousel, WhatsApp). Un aperçu du titre suit la frappe ; OK garde, Annuler remet le texte d’avant.
+   Titre vide : deux touchers n’importe où dans l’aperçu (photo déjà en place). Un seul toucher garde le déplacement au doigt. ---------- */
+let mvTap = null, qeEl = null, qeUndo = null, qeT0 = 0, qeRec = 'tit';
+function qeIds(){ return car() ? ['text'] : ['b1', 'b2', 'b3']; }
+function qeLbl(id){ if (id === 'text'){ const l = $('textLbl'); return (l && l.textContent.trim()) || 'Titre'; } try { const sp = $(id).closest('label').querySelector('.row'); return sp.firstChild.textContent.trim().replace(/\s*·\s*$/, ''); } catch(_){ return id; } }
+function qeFit(){ const v = window.visualViewport; if (!qeEl || !v) return; qeEl.style.top = v.offsetTop + 'px'; qeEl.style.height = v.height + 'px'; }
+function qePaint(){
+  const cv = qeEl && $('qePv'); if (!cv) return;
+  const r = MVREC && (qeRec === 'narr' ? MVREC.narr : (car() && MVREC.car && MVREC.car.p === pages[sel]) ? MVREC.car : MVREC.tit), p = qeRec === 'narr' ? pages[0] : pages[sel]; let b = null; /* version 10.40 : sous-titres */ /* version 10.39 : bloc de texte du carrousel et du WhatsApp */ try { b = r && r.p === p ? mvBox(mvMask(r)) : null; } catch(_){}
+  if (!b){ cv.hidden = true; return; } cv.hidden = false;
+  const pad = 36, k = stage.width / W, sx = Math.max(0, b.x - pad), sy = Math.max(0, b.y - pad), sw = Math.min(W, b.x + b.w + pad) - sx, sh = Math.min(H, b.y + b.h + pad) - sy;
+  const cw = Math.max(1, cv.clientWidth || 300), ch = Math.min(130, Math.round(cw * sh / sw)), dpr = Math.min(3, window.devicePixelRatio || 1);
+  cv.style.height = ch + 'px'; cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+  const c = cv.getContext('2d'); c.fillStyle = '#111'; c.fillRect(0, 0, cv.width, cv.height);
+  const sc = Math.min(cv.width / sw, cv.height / sh), dw = sw * sc, dh = sh * sc;
+  try { c.drawImage(stage, sx * k, sy * k, sw * k, sh * k, (cv.width - dw) / 2, (cv.height - dh) / 2, dw, dh); } catch(_){}
+}
+function qePut(id, v){ const el = $(id); if (!el || el.value === v) return; el.value = v; el.dispatchEvent(new Event('input', { bubbles:true })); }
+function qeClose(undo){ if (!qeEl) return; if (undo && qeUndo) qeUndo(); qeUndo = null;
+  const v = window.visualViewport; if (v){ v.removeEventListener('resize', qeFit); v.removeEventListener('scroll', qeFit); }
+  try { const a = document.activeElement; if (a && qeEl.contains(a)) a.blur(); } catch(_){} qeEl.remove(); qeEl = null; document.removeEventListener('keydown', qeKey, true);
+  if (undo){ layersDirty = true; redraw(); try { narrUI(); } catch(_){} } }
+function qeKey(e){ if (e.key === 'Escape'){ e.preventDefault(); qeClose(true); } }
+(() => { let d = null, last = null;
+  const empty = p => !!p && !isEnd(sel) && !fbNoTit(p) && qeIds().every(id => !String(p[id] || '').trim());
+  document.addEventListener('pointerdown', e => {
+    if (e.target !== stage || qeEl || mvDrag || fbDrag || spDrag !== null || playing || blurMode || filmRun || bigOpen){ d = null; return; }
+    const p = pages[sel]; if (!empty(p) || pts.size){ d = null; last = null; return; }
+    d = { id:e.pointerId, x:e.clientX, y:e.clientY, t:performance.now(), p, cx:p.cx, cy:p.cy };
+    e.preventDefault(); /* pas de clic de compatibilité après le toucher : il retirerait le curseur de la fenêtre */
+  }, true);
+  window.addEventListener('pointerup', e => {
+    if (!d || d.id !== e.pointerId) return; const D = d; d = null;
+    if (Math.hypot(e.clientX - D.x, e.clientY - D.y) > 12 || performance.now() - D.t > 400){ last = null; return; }
+    if (D.p.cx !== D.cx || D.p.cy !== D.cy){ D.p.cx = D.cx; D.p.cy = D.cy; redraw(); } /* un toucher ne recadre pas la photo */
+    const now = performance.now();
+    if (last && last.p === D.p && now - last.t < 450 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 60){ last = null; qeOpen(D.p); }
+    else last = { p:D.p, t:now, x:e.clientX, y:e.clientY };
+  }, true);
+})();
+function qeOpen(p){
+  if (qeEl || isEnd(sel) || pages[sel] !== p) return; qeRec = 'tit';
+  const ids = qeIds(), V0 = ids.map(id => p[id]);
+  qeUndo = () => { ids.forEach((id, i) => { qePut(id, V0[i] || ''); if (V0[i] === undefined) delete p[id]; }); };
+  const fld = (id, i) => id === 'text' ? `<label class="qeF"><span>${qeLbl(id)} <em id="qeC${i}"></em></span><textarea id="qeF${i}" rows="3" autocapitalize="sentences"></textarea></label>`
+    : `<label class="qeF"><span>${qeLbl(id)} <em id="qeC${i}"></em></span><input id="qeF${i}" type="text" maxlength="${$(id).maxLength > 0 ? $(id).maxLength : 40}" autocomplete="off" autocapitalize="sentences"></label>`;
+  qeEl = document.createElement('div'); qeEl.id = 'qeWrap';
+  qeEl.innerHTML = `<div id="qeBox" role="dialog" aria-label="Modifier le titre"><div class="qeHd"><button type="button" id="qeNo">Annuler</button><strong>Modifier le titre</strong><button type="button" id="qeOk">OK</button></div><canvas id="qePv" aria-label="Aperçu du titre"></canvas>${ids.map(fld).join('')}</div>`;
+  document.body.append(qeEl);
+  const F = ids.map((id, i) => $('qeF' + i));
+  F.forEach((f, i) => { f.value = p[ids[i]] || ''; });
+  const cnt = () => F.forEach((f, i) => { const mx = f.maxLength > 0 ? f.maxLength : 0; $('qeC' + i).textContent = mx ? `${f.value.length} / ${mx} car.` : `${f.value.length} car.`; });
+  const live = () => { cnt(); F.forEach((f, i) => qePut(ids[i], f.value)); qePaint(); }; /* l’aperçu suit la frappe */
+  F.forEach(f => f.addEventListener('input', live)); cnt();
+  $('qeNo').onclick = () => qeClose(true);
+  $('qeOk').onclick = () => { live(); qeUndo = null; qeClose(false); layersDirty = true; redraw(); try { counts(); } catch(_){} scheduleSave(); toast('Titre modifié.'); };
+  qeT0 = performance.now(); /* un troisième toucher par réflexe, juste après l’ouverture, ne referme pas la fenêtre */
+  qeEl.addEventListener('pointerdown', e => { if (e.target !== qeEl) return; e.preventDefault(); if (performance.now() - qeT0 > 700) qeClose(true); });
+  ['mousedown', 'click'].forEach(t => qeEl.addEventListener(t, e => { if (e.target === qeEl) e.preventDefault(); }));
+  document.addEventListener('keydown', qeKey, true);
+  const v = window.visualViewport; if (v){ v.addEventListener('resize', qeFit); v.addEventListener('scroll', qeFit); } qeFit();
+  qePaint();
+  const ti = F.slice().reverse().find(f => f.value.trim()) || F[0]; /* curseur à la fin de la dernière ligne écrite */
+  let tf = ti;
+  try { ti.focus(); if (!ti.value && F[0] !== ti && !F[0].value){ tf = F[0]; tf.focus(); } const n = tf.value.length; tf.setSelectionRange(n, n); } catch(_){} /* textes d’exemple vidés à l’entrée (version 10.14) : curseur dans la bande 1 */
+  setTimeout(() => { try { if (qeEl && document.activeElement === tf) $('qeBox').scrollIntoView({ block:'end' }); } catch(_){} }, 450);
+}
+/* ---------- version 10.40 (repris du perso 213) : deux touchers sur un sous-titre narratif (vidéo ou film en pause, ou sous-titre montré
+   dans l’aperçu) ouvrent la même fenêtre : numéro et moment d’affichage, « Précédent » et « Suivant » pour relire toute la story,
+   aperçu en direct. OK garde tout, Annuler remet tous les sous-titres comme avant. La durée ne change pas (6 s chacun). ---------- */
+function qnIdx(){
+  const p = pages[0]; if (!story() || !p || !narrOn(p)) return -1; const I = narrCfg(p).items;
+  const pk = narrPeekOn(p); if (pk) return I.indexOf(pk);
+  const t = tlNow(); if (t < 0) return -1;
+  const sl = filmRun ? filmSlidesLive : null, D = sl ? sl.total : storyLenD();
+  const x = narrTimes(p, D).find(q => t >= q.a - 0.15 && t <= q.b + 0.15); return x ? I.indexOf(x.it) : -1;
+}
+function qnHitPaused(p, c){ /* vidéo en pause : le sous-titre affiché à cet instant se touche aussi */
+  if (!story() || filmRun || p !== pages[0] || narrPeekOn(p) || tlNow() < 0) return null; const i = qnIdx(); if (i < 0) return null; const it = narrCfg(p).items[i];
+  try { return mvAt(mvMask({ p, fn:cc => drawNarrBlock(cc, p, it) }), c.x, c.y) ? 'narr' : null; } catch(_){ return null; } }
+function qnOpen(i){
+  const p = pages[0]; if (qeEl || !story() || !p) return; const C = narrCfg(p); p.narr = C; const S = C.items; if (!S[i]) return;
+  if (filmRun){ try { filmStop(); } catch(_){} }
+  qeRec = 'narr';
+  const pk0 = narrPeek, B0 = S.map(x => [x.t, x.hl]); let cur = i;
+  qeUndo = () => { S.forEach((x, k) => { if (B0[k]){ x.t = B0[k][0]; x.hl = B0[k][1]; } }); narrPeek = pk0; };
+  qeEl = document.createElement('div'); qeEl.id = 'qeWrap';
+  qeEl.innerHTML = `<div id="qeBox" role="dialog" aria-label="Modifier les sous-titres"><div class="qeHd"><button type="button" id="qeNo">Annuler</button><strong id="qnH"></strong><button type="button" id="qeOk">OK</button></div><div class="qeNav"><button type="button" id="qnPrev" class="small">‹ Précédent</button><span id="qnAt"></span><button type="button" id="qnNext" class="small">Suivant ›</button></div><canvas id="qePv" aria-label="Aperçu du sous-titre"></canvas><label class="qeF"><span>Texte du sous-titre <em id="qnC"></em></span><textarea id="qnT" rows="3" maxlength="100" autocapitalize="sentences"></textarea></label></div>`;
+  document.body.append(qeEl);
+  const ta = $('qnT'), D = storyLenD();
+  const cnt = () => { const n = ta.value.length, c = $('qnC'); c.textContent = `${n} / 100 car.`; c.classList.toggle('over', n > 100); };
+  const show = () => {
+    narrPeek = cur; layersDirty = true; redraw();
+    ta.value = S[cur].t || ''; cnt();
+    $('qnH').textContent = `Sous-titre ${cur + 1} sur ${S.length}`;
+    const T = D ? narrTimes(p, D).find(q => q.it === S[cur]) : null; $('qnAt').textContent = T ? `de ${fmtS(Math.round(T.a * 10) / 10)} à ${fmtS(Math.round(T.b * 10) / 10)}` : 'non affiché, faute de place';
+    $('qnPrev').disabled = cur <= 0; $('qnNext').disabled = cur >= S.length - 1;
+    qePaint();
+  };
+  ta.addEventListener('input', () => { S[cur].t = ta.value; narrPeek = cur; layersDirty = true; redraw(); cnt(); qePaint(); }); /* l’aperçu suit la frappe */
+  const go = d => { const k = cur + d; if (k < 0 || k >= S.length) return; cur = k; show(); try { ta.focus(); const n = ta.value.length; ta.setSelectionRange(n, n); } catch(_){} };
+  ['qnPrev', 'qnNext'].forEach((id, j) => { const b = $(id); b.addEventListener('pointerdown', e => e.preventDefault()); b.addEventListener('mousedown', e => e.preventDefault()); b.onclick = () => go(j ? 1 : -1); }); /* le clavier reste ouvert */
+  $('qeNo').onclick = () => qeClose(true);
+  $('qeOk').onclick = () => { qeUndo = null; qeClose(false); layersDirty = true; redraw(); try { narrUI(); } catch(_){} scheduleSave(); toast('Sous-titres modifiés.'); };
+  qeT0 = performance.now();
+  qeEl.addEventListener('pointerdown', e => { if (e.target !== qeEl) return; e.preventDefault(); if (performance.now() - qeT0 > 700) qeClose(true); });
+  ['mousedown', 'click'].forEach(t => qeEl.addEventListener(t, e => { if (e.target === qeEl) e.preventDefault(); }));
+  document.addEventListener('keydown', qeKey, true);
+  const v = window.visualViewport; if (v){ v.addEventListener('resize', qeFit); v.addEventListener('scroll', qeFit); } qeFit();
+  show();
+  try { ta.focus(); const n = ta.value.length; ta.setSelectionRange(n, n); } catch(_){}
+  setTimeout(() => { try { if (qeEl && document.activeElement === ta) $('qeBox').scrollIntoView({ block:'end' }); } catch(_){} }, 450);
+}
 
 $('spR').addEventListener('input', e => setSpR(parseInt(e.target.value, 10) / 100, true));
 $('spR').addEventListener('change', e => setSpR(parseInt(e.target.value, 10) / 100));
