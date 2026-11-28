@@ -699,6 +699,23 @@ body{--accent:#FFC21A;--accent-ink:#173449;--accent-hi:#FFD040;--accent-soft:rgb
 #shTop .mark{background:#1f2a37}
 #shDrawer #vbColPick{width:44px;height:44px;padding:2px}
 #shDrawer input[type=color]{font-size:16px}
+/* version 208 : fenêtre de correction rapide du titre (deux touchers sur le titre dans l’aperçu) */
+#qeWrap{position:fixed;left:0;top:0;width:100%;height:100%;z-index:9999;background:rgba(0,0,0,.35);display:flex;align-items:flex-end;justify-content:center}
+#qeBox{width:100%;max-width:560px;box-sizing:border-box;background:var(--panel);color:var(--ink);border-radius:16px 16px 0 0;padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 12px);display:grid;gap:8px;box-shadow:0 -4px 18px rgba(0,0,0,.3);font-family:var(--font)}
+#qePv{display:block;width:100%;border-radius:10px;background:#111}
+#qeBox .qeNav{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+#qeBox .qeNav button{min-height:36px;padding:6px 12px;border-radius:9px;font-size:14px}
+#qeBox .qeNav span{text-align:center;flex:1}
+#qeBox em.over{color:var(--warn);font-weight:700}
+#qeBox .qeHd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#qeBox .qeHd strong{font-size:16px}
+#qeNo{background:none!important;border:0!important;box-shadow:none!important;color:var(--accent);font-size:16px;padding:8px 4px;min-height:40px}
+#qeOk{background:var(--accent)!important;color:var(--accent-ink)!important;border:0!important;border-radius:10px;font-size:16px;font-weight:700;padding:8px 20px;min-height:40px}
+#qeBox .qeF{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+#qeBox .qeF span{display:flex;justify-content:space-between;gap:8px}#qeBox .qeF em{font-style:normal}
+#qeBox input,#qeBox textarea{font:16px/1.35 var(--font);color:var(--input-ink);background:var(--input-bg);border:1.5px solid var(--input-line);border-radius:10px;padding:9px 10px;width:100%;box-sizing:border-box;margin:0}
+#qeBox textarea{resize:none;min-height:66px}
+#qeBox input:focus,#qeBox textarea:focus{outline:none;border-color:var(--accent)}
 </style>
 <style id="ui-gris71">
 /* ===== perso, version 71 : thème « Le Gris » (interface seulement). Variables préfixées --ui- ; le rendu des visuels lit la rubrique dans les réglages (ACC), pas dans ces styles ===== */
@@ -1394,7 +1411,7 @@ button.primary,.btn.primary,#shDrawer button.primary,#shDrawer #importBtn,#shDra
           </div>
         </details>
       </section>
-      <p class="ver">Atelier Instantané · version 206</p>
+      <p class="ver">Atelier Instantané · version 213</p>
     </div>
   </div>
 </div>
@@ -4648,8 +4665,9 @@ function narrEase(k){ k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k
    aucun sous-titre ne déborde, ceux qui ne tiennent pas ne s’affichent pas */
 const NARR_MIN = 4.5, /* version 204 : 4,5 s au moins (5 s auparavant), à cause du fondu de 1,3 s */ NARR_GAPMIN = 1.5, NARR_MARGIN = 0.3; /* version 202 : un sous-titre reste au moins 5 s ; s’il n’y a pas la place, il y en a moins */
 function narrWin(D){
-  const a = TITLE_HOLD + TITLE_FADE; let b = D - 1; /* version 198 : les sous-titres peuvent passer pendant « Plus d’infos » */
+  const a = TITLE_HOLD + TITLE_FADE; let b = D - 1;
   if (sigOn() && sigFits(D)) b = Math.min(b, D - sigCfg().dur - NARR_MARGIN);
+  if (moreOnNow() && D > MORE_SHORT) b = Math.min(b, D - MORE_FROM_END - NARR_MARGIN); /* version 207 : plus aucun sous-titre pendant « Plus d’infos » (permis depuis la version 198) */
   return [a, b];
 }
 function narrRoom(L){ return L < 2 ? 0 : Math.max(1, Math.floor((L + NARR_GAPMIN) / (NARR_MIN + NARR_GAPMIN))); } /* nombre de sous-titres qui tiennent au plus serré */
@@ -4664,14 +4682,29 @@ function narrPlan(n, a, b){
   return Array.from({ length:n }, (_, i) => [a + i * (show + gap), Math.min(b, a + i * (show + gap) + show)]);
 }
 function narrFit(a, b){ return Math.max(0, Math.floor((b - Math.min(a + 1, b) + NARR_GAP + 0.5) / (NARR_SHOW + NARR_GAP))); } /* une demi-seconde de tolérance sur les pauses */
+/* version 207 : story (vidéo ou film photo) : tous les sous-titres ont la même durée (6 s), jamais écourtés ;
+   s’il n’y a pas la place, l’image seule entre deux sous-titres se resserre (2,5 s puis 1,5 s au moins), puis les derniers sont retirés.
+   Une story trop courte pour 6 s garde un seul sous-titre s’il reste 4,5 s au moins. Le montage garde sa répartition (narrPlan). */
+function narrShowFix(L){ return L >= NARR_SHOW ? NARR_SHOW : L >= NARR_MIN ? L : 0; }
+function narrPlanFix(n, a, b){
+  const show = narrShowFix(b - a); if (!show || n <= 0) return [];
+  n = Math.min(n, Math.floor((b - a + NARR_GAPMIN + 1e-6) / (show + NARR_GAPMIN)));
+  if (b - a - 1 >= n * show + (n - 1) * NARR_GAPMIN) a += 1; /* une seconde d’image seule après le titre quand la place le permet */
+  const gap = n > 1 ? Math.max(NARR_GAPMIN, Math.min(NARR_GAP, (b - a - n * show) / (n - 1))) : 0;
+  return Array.from({ length:n }, (_, i) => [a + i * (show + gap), a + i * (show + gap) + show]);
+}
 function narrTimes(p, D){
   if (nvOn()) return nvTimes(); /* version 191 : Narration visuelle, répartition d’office */
   if (montOn() && pages.length >= 2){ const S = narrOf(p), P = montNarrPlan(S.length); return S.map((x, i) => P[i] && P[i][1] - P[i][0] >= 1.5 ? { from:P[i][0], to:P[i][1] } : null); }
   const S = narrOf(p), n = S.length; if (!n || !D) return [];
-  const [a, b] = narrWin(D), plan = narrPlan(n, a, b), show = plan.length ? plan[0][1] - plan[0][0] : NARR_SHOW;
-  /* moment choisi à la main : ramené dans la fenêtre ; sous-titre sans place : non affiché (null) */
-  const st = S.map((s, i) => s.at == null ? (plan[i] ? plan[i][0] : null) : Math.max(a, Math.min(+s.at, b - Math.min(show, NARR_MIN))));
-  return S.map((s, i) => { if (st[i] == null || b - a < 2) return null; let end = st[i] + show; st.forEach((x, j) => { if (j !== i && x != null && x > st[i] && x < end) end = x - 0.2; }); end = Math.min(end, b); return end - st[i] < 1.5 ? null : { from:st[i], to:end }; });
+  const [a, b] = narrWin(D), plan = narrPlanFix(n, a, b), show = narrShowFix(b - a);
+  if (!show) return S.map(() => null);
+  /* moment choisi à la main : ramené dans la fenêtre ; version 207 : un sous-titre n’est jamais écourté, il est décalé après le précédent
+     (1,5 s d’image seule au moins) ; s’il ne tient plus avant la fin de la fenêtre, il n’est pas affiché (null) */
+  const st = S.map((s, i) => s.at == null ? (plan[i] ? plan[i][0] : null) : Math.max(a, Math.min(+s.at, b - show)));
+  const out = S.map(() => null); let last = -1e9;
+  S.map((_, i) => i).filter(i => st[i] != null).sort((i, j) => st[i] - st[j] || i - j).forEach(i => { const x = Math.max(st[i], last + NARR_GAPMIN); if (x + show > b + 1e-6) return; out[i] = { from:x, to:x + show }; last = x + show; });
+  return out;
 }
 function narrAlpha(p, i, t, D){
   const T = narrTimes(p, D)[i]; if (!T || t < T.from || t > T.to) return 0;
@@ -6682,7 +6715,7 @@ function mvMask(rec, off){ const k = 0.25, w = Math.ceil(W * k), h = Math.ceil(H
 function mvAt(D, x, y){ const cx = Math.round(x / 4), cy = Math.round(y / 4); for (let j = -5; j <= 5; j++) for (let i = -5; i <= 5; i++){ const X = cx + i, Y = cy + j; if (X < 0 || Y < 0 || X >= D.width || Y >= D.height) continue; if (D.data[(Y * D.width + X) * 4 + 3] > 30) return true; } return false; }
 function mvBox(D){ let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1; for (let y = 0; y < D.height; y++) for (let x = 0; x < D.width; x++) if (D.data[(y * D.width + x) * 4 + 3] > 30){ if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   return x1 < 0 ? null : { x:x0 * 4, y:y0 * 4, w:(x1 - x0 + 1) * 4, h:(y1 - y0 + 1) * 4 }; }
-function mvVis(k, p){ try { if (k === 'syn') return synOn(p); if (k === 'vb') return vb() && sel > 0; if (k === 'car') return car(); } catch(e){} return true; }
+function mvVis(k, p){ try { if (k === 'tit' && story() && narrPv >= 0 && narrOf(pages[0])[narrPv] && String(narrOf(pages[0])[narrPv].text || '').trim()) return false; /* version 213 : titre caché pendant l’aperçu d’un sous-titre, pas touchable */ if (k === 'tit' && story()){ const t = tlNow(); if (t >= 0 && titleAlpha(pages[0], t) < 0.05) return false; } /* ni quand la vidéo ou le film l’a fait disparaître */ if (k === 'syn') return synOn(p); if (k === 'vb') return vb() && sel > 0; if (k === 'car') return car(); } catch(e){} return true; }
 function mvHit(p, c){ for (const k of MV_ORD){ const r = MVREC[k]; if (!r || r.p !== p || !mvVis(k, p)) continue; if (mvAt(mvMask(r), c.x, c.y)) return k; } return null; }
 function mvGet(p, k){ p.mv = p.mv || {}; return p.mv[k] = p.mv[k] || { dx:0, dy:0, s:1 }; }
 function mvBase(){ const P = [...mvPts.values()], m = mvGet(mvDrag.p, mvDrag.k); mvDrag.c0 = { x:P.reduce((a, q) => a + q.x, 0) / P.length, y:P.reduce((a, q) => a + q.y, 0) / P.length };
@@ -6701,7 +6734,7 @@ let mvFilmRaf = 0;
 function mvFilmNarr(c){ const sl = filmSlidesLive, L = sl && sl.over, p = pages[0]; if (!L || !L.narr || !p) return null; /* sous-titre affiché à cet instant (calques du film) */
   const T = sl.mont ? sl.total : sl.len, x = Math.round(c.x), y = Math.round(c.y);
   for (let i = 0; i < L.narr.length; i++){ const cv = L.narr[i]; if (!cv || !(narrAlpha(p, i, FILMT, T) > 0.05)) continue;
-    const d = cv.getContext('2d').getImageData(Math.max(0, x - 24), Math.max(0, y - 24), 49, 49).data; for (let k = 3; k < d.length; k += 4) if (d[k] > 30) return { p }; }
+    const d = cv.getContext('2d').getImageData(Math.max(0, x - 24), Math.max(0, y - 24), 49, 49).data; for (let k = 3; k < d.length; k += 4) if (d[k] > 30) return { p, i }; } /* version 213 : numéro du sous-titre touché */
   return null; }
 function mvFilmRef(){ if (mvFilmRaf) return; mvFilmRaf = requestAnimationFrame(() => { mvFilmRaf = 0; const sl = filmSlidesLive; if (!sl || !filmHeld) return; try { sl.over = buildLayers(0, pages[0]); } catch(e){} filmDraw(sctx, sl, FILMT); }); }
 document.addEventListener('pointerdown', e => {
@@ -6709,15 +6742,15 @@ document.addEventListener('pointerdown', e => {
   if (filmRun && !mvDrag){ e.stopPropagation(); e.preventDefault(); if (!filmHeld || bigOpen) return;
     const c = toCanvas(e), q = mvFilmNarr(c); if (!q) return; const m = mvGet(q.p, 'narr');
     if (m.ax == null){ m.ax = Math.round(W / 2); m.ay = Math.round(c.y); }
-    mvDrag = { p:q.p, k:'narr', film:true }; mvPts.clear(); mvPts.set(e.pointerId, c); mvBase(); return; }
-  if (mvDrag){ e.stopPropagation(); e.preventDefault(); if (mvPts.size < 2){ mvPts.set(e.pointerId, toCanvas(e)); mvBase(); } return; } /* deuxième doigt : pincer pour la taille */
+    mvDrag = { p:q.p, k:'narr', film:true, ni:q.i, t0:performance.now(), x0:e.clientX, y0:e.clientY, mx:0 }; mvPts.clear(); mvPts.set(e.pointerId, c); mvBase(); return; }
+  if (mvDrag){ e.stopPropagation(); e.preventDefault(); mvDrag.multi = true; if (mvPts.size < 2){ mvPts.set(e.pointerId, toCanvas(e)); mvBase(); } return; } /* deuxième doigt : pincer pour la taille */
   if (fbDrag || spDrag !== null || bigOpen || playing || blurMode || pts.size || isEnd(sel) || (filmRun && !filmHeld)) return;
-  const p = pages[sel]; if (!p) return; const c = toCanvas(e), k = mvHit(p, c); if (!k) return;
+  const p = pages[sel]; if (!p) return; const c = toCanvas(e), k = mvHit(p, c) || qnHitPaused(p, c); if (!k) return; /* version 213 : sous-titre affiché dans la vidéo en pause */
   e.stopPropagation(); e.preventDefault(); const m = mvGet(p, k);
   if (m.ax == null){ const r = MVREC[k], b = r ? mvBox(mvMask(r, true)) : null; m.ax = b ? Math.round(b.x + b.w / 2) : Math.round(W / 2); m.ay = b ? Math.round(b.y + b.h / 2) : Math.round(H / 2); }
-  mvDrag = { p, k }; mvPts.clear(); mvPts.set(e.pointerId, c); mvBase();
+  mvDrag = { p, k, t0:performance.now(), x0:e.clientX, y0:e.clientY, mx:0 }; mvPts.clear(); mvPts.set(e.pointerId, c); mvBase(); /* version 208 : départ noté pour reconnaître un simple toucher */
 }, true);
-window.addEventListener('pointermove', e => { if (!mvDrag || !mvPts.has(e.pointerId)) return; e.preventDefault(); mvPts.set(e.pointerId, toCanvas(e));
+window.addEventListener('pointermove', e => { if (!mvDrag || !mvPts.has(e.pointerId)) return; e.preventDefault(); mvPts.set(e.pointerId, toCanvas(e)); if (mvDrag.x0 != null) mvDrag.mx = Math.max(mvDrag.mx || 0, Math.hypot(e.clientX - mvDrag.x0, e.clientY - mvDrag.y0));
   const P = [...mvPts.values()], cx = P.reduce((a, q) => a + q.x, 0) / P.length, cy = P.reduce((a, q) => a + q.y, 0) / P.length, m = mvGet(mvDrag.p, mvDrag.k);
   let dx = mvDrag.dx0 + cx - mvDrag.c0.x, dy = mvDrag.dy0 + cy - mvDrag.c0.y;
   if (mvDrag.k !== 'syn' && mvDrag.k !== 'car' && Math.abs(m.ax + dx - W / 2) < 16) dx = W / 2 - m.ax; /* aimanté au milieu */
@@ -6725,11 +6758,131 @@ window.addEventListener('pointermove', e => { if (!mvDrag || !mvPts.has(e.pointe
   if (P.length > 1 && mvDrag.d0 > 20){ const d = Math.hypot(P[0].x - P[1].x, P[0].y - P[1].y); m.s = Math.round(Math.max(0.5, Math.min(2.2, mvDrag.s0 * d / mvDrag.d0)) * 100) / 100; }
   if (mvDrag.film){ mvFilmRef(); return; } layersDirty = true; redraw(); }, { passive:false });
 { const end = e => { if (!mvDrag || !mvPts.has(e.pointerId)) return; mvPts.delete(e.pointerId); if (mvPts.size){ mvBase(); return; }
-    const p = mvDrag.p, k = mvDrag.k, film = mvDrag.film; mvDrag = null; const m = p.mv && p.mv[k];
+    const p = mvDrag.p, k = mvDrag.k, film = mvDrag.film, D0 = mvDrag; mvDrag = null; const m = p.mv && p.mv[k];
+    const tap = !D0.multi && D0.t0 != null && (D0.mx || 0) < 12 && performance.now() - D0.t0 < 400; /* version 208 ; version 213 : aussi dans le film en pause */
+    if (tap && m){ m.dx = D0.dx0; m.dy = D0.dy0; m.s = D0.s0; } /* un toucher ne déplace rien */
+    if (tap && k === 'narr'){ const now = performance.now(), ni = film && D0.ni != null ? D0.ni : qnIdx(); /* version 213 : deux touchers sur un sous-titre */
+      if (mvTap && mvTap.narr && now - mvTap.t < 450 && Math.hypot(e.clientX - mvTap.x, e.clientY - mvTap.y) < 45){ const i = mvTap.ni >= 0 ? mvTap.ni : ni; mvTap = null; if (p.mv && p.mv[k] && !mvMoved(p.mv[k])) delete p.mv[k]; if (p.mv && !Object.keys(p.mv).length) delete p.mv; if (i >= 0) qnOpen(i); return; }
+      mvTap = { p, narr:true, ni, t:now, x:e.clientX, y:e.clientY }; if (p.mv && p.mv[k] && !mvMoved(p.mv[k])) delete p.mv[k]; if (p.mv && !Object.keys(p.mv).length) delete p.mv; mvUI(); return; } /* un toucher ne quitte pas la pause */
+    if (tap && !film && (k === 'tit' || k === 'car')){ const now = performance.now(); /* version 212 : aussi le bloc de texte du carrousel */ if (mvTap && mvTap.p === p && now - mvTap.t < 450 && Math.hypot(e.clientX - mvTap.x, e.clientY - mvTap.y) < 45){ mvTap = null; qeOpen(p); } else mvTap = { p, t:now, x:e.clientX, y:e.clientY }; } else mvTap = null;
     if (film){ if (m && !mvMoved(m)) delete p.mv[k]; if (p.mv && !Object.keys(p.mv).length) delete p.mv; layersDirty = true; mvFilmRef(); scheduleSave(); mvUI(); return; }
     if (m){ if (!mvMoved(m)) delete p.mv[k]; else { const r = MVREC[k]; m.box = r ? mvBox(mvMask(r)) : null; } if (!Object.keys(p.mv).length) delete p.mv; }
     layersDirty = true; redraw(); scheduleSave(); mvUI(); };
   window.addEventListener('pointerup', end); window.addEventListener('pointercancel', end); }
+/* ---------- version 208 : deux touchers sur le titre dans l’aperçu ouvrent une petite fenêtre au-dessus du clavier
+   pour corriger le titre (et l’accroche en style Overlay) sans passer par le volet Texte. OK reporte le texte dans les cases
+   du volet Texte (mêmes vérifications, même enregistrement) ; Annuler ne change rien. Un seul toucher garde le déplacement au doigt. ---------- */
+let mvTap = null, qeEl = null, qeUndo = null, qeT0 = 0, qeRec = 'tit';
+/* version 211 : fenêtre en bas, remontée au-dessus du clavier par l’iPhone (version 209 : en haut, sortait de l’écran dans l’application Claude) ;
+   sous l’en-tête, un aperçu du titre (découpé dans l’aperçu de la story) qui suit la frappe en direct.
+   Annuler remet le texte d’avant. */
+function qeFit(){ const v = window.visualViewport; if (!qeEl || !v) return; qeEl.style.top = v.offsetTop + 'px'; qeEl.style.height = v.height + 'px'; }
+function qePaint(){
+  const cv = qeEl && $('qePv'); if (!cv) return;
+  const r = MVREC && (qeRec === 'narr' ? MVREC.narr : car() ? MVREC.car : MVREC.tit), p = qeRec === 'narr' ? pages[0] : pages[sel]; let b = null; /* version 213 : sous-titres */ /* version 212 : bloc de texte du carrousel */ try { b = r && r.p === p ? mvBox(mvMask(r)) : null; } catch(_){}
+  if (!b){ cv.hidden = true; return; } cv.hidden = false;
+  const pad = 36, k = stage.width / W, sx = Math.max(0, b.x - pad), sy = Math.max(0, b.y - pad), sw = Math.min(W, b.x + b.w + pad) - sx, sh = Math.min(H, b.y + b.h + pad) - sy;
+  const cw = Math.max(1, cv.clientWidth || 300), ch = Math.min(130, Math.round(cw * sh / sw)), dpr = Math.min(3, window.devicePixelRatio || 1);
+  cv.style.height = ch + 'px'; cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+  const c = cv.getContext('2d'); c.fillStyle = '#111'; c.fillRect(0, 0, cv.width, cv.height);
+  const sc = Math.min(cv.width / sw, cv.height / sh), dw = sw * sc, dh = sh * sc;
+  try { c.drawImage(stage, sx * k, sy * k, sw * k, sh * k, (cv.width - dw) / 2, (cv.height - dh) / 2, dw, dh); } catch(_){}
+}
+function qePut(id, v){ const el = $(id); if (!el || el.value === v) return; el.value = v; el.dispatchEvent(new Event('input', { bubbles:true })); }
+function qeClose(undo){ if (!qeEl) return; if (undo && qeUndo) qeUndo(); qeUndo = null;
+  const v = window.visualViewport; if (v){ v.removeEventListener('resize', qeFit); v.removeEventListener('scroll', qeFit); }
+  try { const a = document.activeElement; if (a && qeEl.contains(a)) a.blur(); } catch(_){} qeEl.remove(); qeEl = null; document.removeEventListener('keydown', qeKey, true);
+  if (undo){ layersDirty = true; redraw(); try { narrUI(true); } catch(_){} } }
+function qeKey(e){ if (e.key === 'Escape'){ e.preventDefault(); qeClose(true); } }
+/* version 210 : titre vide : rien n’est dessiné à toucher (l’accroche d’exemple n’est jamais exportée) ;
+   deux touchers n’importe où dans l’aperçu ouvrent alors la fenêtre, sans déplacer la photo */
+(() => { let d = null, last = null;
+  const empty = p => !!p && !isEnd(sel) && !fbNoTit(p) && (car() ? !String(p.title || '').trim() && !String(p.body || '').trim() : !String(p.text || '').trim()); /* version 212 : carrousel compris */
+  document.addEventListener('pointerdown', e => {
+    if (e.target !== stage || qeEl || mvDrag || fbDrag || spDrag !== null || playing || blurMode || filmRun || bigOpen){ d = null; return; }
+    const p = pages[sel]; if (!empty(p) || pts.size){ d = null; last = null; return; }
+    d = { id:e.pointerId, x:e.clientX, y:e.clientY, t:performance.now(), p, cx:p.cx, cy:p.cy };
+    e.preventDefault(); /* version 211 : pas de clic de compatibilité après le toucher, il retirait le curseur de la fenêtre */
+  }, true);
+  window.addEventListener('pointerup', e => {
+    if (!d || d.id !== e.pointerId) return; const D = d; d = null;
+    if (Math.hypot(e.clientX - D.x, e.clientY - D.y) > 12 || performance.now() - D.t > 400){ last = null; return; }
+    if (D.p.cx !== D.cx || D.p.cy !== D.cy){ D.p.cx = D.cx; D.p.cy = D.cy; redraw(); } /* un toucher ne recadre pas la photo */
+    const now = performance.now();
+    if (last && last.p === D.p && now - last.t < 450 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 60){ last = null; qeOpen(D.p); }
+    else last = { p:D.p, t:now, x:e.clientX, y:e.clientY };
+  }, true);
+})();
+function qeOpen(p){
+  if (qeEl || isEnd(sel) || pages[sel] !== p) return; qeRec = 'tit';
+  const tf = car() ? 'title' : 'text', acc = !car() && !!$('ovFields') && !$('ovFields').hidden, tb = car() ? 'body' : null; /* version 212 : carrousel, titre et texte */
+  const T0 = p[tf], A0 = p.ovAcc, B0 = tb ? p[tb] : undefined; /* version 210 : Annuler remet exactement l’état d’avant, même un titre jamais rempli */
+  qeUndo = () => { qePut(tf, T0 || ''); if (acc) qePut('ovAcc', A0 || ''); if (tb) qePut(tb, B0 || ''); if (T0 === undefined) delete p[tf]; if (acc && A0 === undefined) delete p.ovAcc; if (tb && B0 === undefined) delete p[tb]; };
+  qeEl = document.createElement('div'); qeEl.id = 'qeWrap';
+  qeEl.innerHTML = `<div id="qeBox" role="dialog" aria-label="Modifier le titre"><div class="qeHd"><button type="button" id="qeNo">Annuler</button><strong>${tb ? 'Modifier le texte' : 'Modifier le titre'}</strong><button type="button" id="qeOk">OK</button></div><canvas id="qePv" aria-label="Aperçu du titre"></canvas>${acc ? `<label class="qeF"><span>Accroche <em id="qeCA"></em></span><input id="qeAcc" type="text" maxlength="${ACC_MAX}" autocomplete="off" autocapitalize="sentences"></label>` : ''}<label class="qeF"><span>Titre <em id="qeCT"></em></span><textarea id="qeTit" rows="3" autocapitalize="sentences"></textarea></label>${tb ? `<label class="qeF"><span>Texte <em id="qeCB"></em></span><textarea id="qeBody" rows="3" autocapitalize="sentences"></textarea></label>` : ''}</div>`;
+  document.body.append(qeEl);
+  const ti = $('qeTit'), ai = $('qeAcc'), bi = $('qeBody');
+  ti.value = p[tf] || ''; if (ai) ai.value = p.ovAcc || ''; if (bi) bi.value = p[tb] || '';
+  const cnt = () => { $('qeCT').textContent = `${ti.value.length} car.`; if (ai) $('qeCA').textContent = `${ai.value.length} / ${ACC_MAX} car.`; if (bi) $('qeCB').textContent = `${bi.value.length} car.`; };
+  const live = () => { cnt(); qePut(tf, ti.value); if (ai) qePut('ovAcc', ai.value.slice(0, ACC_MAX)); if (bi) qePut(tb, bi.value); qePaint(); }; /* l’aperçu suit la frappe */
+  ti.addEventListener('input', live); if (ai) ai.addEventListener('input', live); if (bi) bi.addEventListener('input', live); cnt();
+  $('qeNo').onclick = () => qeClose(true);
+  $('qeOk').onclick = () => { live(); qeUndo = null; qeClose(false); layersDirty = true; redraw(); try { counts(); } catch(_){} scheduleSave(); toast('Titre modifié.'); };
+  qeT0 = performance.now(); /* version 210 : un troisième toucher par réflexe, juste après l’ouverture, ne referme pas la fenêtre */
+  qeEl.addEventListener('pointerdown', e => { if (e.target !== qeEl) return; e.preventDefault(); if (performance.now() - qeT0 > 700) qeClose(true); }); /* le curseur reste dans la case */
+  ['mousedown', 'click'].forEach(t => qeEl.addEventListener(t, e => { if (e.target === qeEl) e.preventDefault(); })); /* version 211 */
+  document.addEventListener('keydown', qeKey, true);
+  const v = window.visualViewport; if (v){ v.addEventListener('resize', qeFit); v.addEventListener('scroll', qeFit); } qeFit();
+  qePaint();
+  /* version 211 : le curseur se place sans bloquer le défilement : l’iPhone fait remonter la fenêtre au-dessus du clavier dès l’ouverture */
+  try { ti.focus(); const n = ti.value.length; ti.setSelectionRange(n, n); } catch(_){}
+  setTimeout(() => { try { if (qeEl && document.activeElement === ti) $('qeBox').scrollIntoView({ block:'end' }); } catch(_){} }, 450);
+}
+/* ---------- version 213 : deux touchers sur un sous-titre narratif (vidéo ou film en pause, ou sous-titre montré dans l’aperçu)
+   ouvrent la même fenêtre : numéro et moment d’affichage, flèches « Précédent » et « Suivant » pour relire toute la story sans refermer,
+   aperçu en direct. OK garde tout, Annuler remet tous les sous-titres comme avant. La durée ne change pas (6 s chacun). ---------- */
+function qnIdx(){
+  const p = pages[0]; if (!story() || !p) return -1; if (narrPv >= 0) return narrPv;
+  const t = tlNow(); if (t < 0) return -1;
+  const sl = filmRun ? filmSlidesLive : null, D = sl ? (sl.mont ? sl.total : sl.len) : storyD(), S = narrOf(p);
+  let k = -1; narrTimes(p, D).forEach((x, i) => { if (x && String((S[i] || {}).text || '').trim() && t >= x.from - 0.15 && t <= x.to + 0.15) k = i; }); return k;
+}
+function qnHitPaused(p, c){ /* version 213 : vidéo en pause : le sous-titre affiché à cet instant se touche aussi */
+  if (!story() || filmRun || p !== pages[0] || narrPv >= 0 || tlNow() < 0) return null; const i = qnIdx(); if (i < 0) return null; const s = narrOf(p)[i];
+  try { return mvAt(mvMask({ p, fn:cc => drawNarr(cc, p, s) }), c.x, c.y) ? 'narr' : null; } catch(_){ return null; } }
+function qnOpen(i){
+  const p = pages[0]; if (qeEl || !story() || !p) return; const S = narrOf(p); if (!S[i]) return;
+  if (filmRun){ try { filmStop(); } catch(_){} }
+  qeRec = 'narr';
+  const pv0 = narrPv, B0 = S.map(x => [x.text, x.hl]); let cur = i;
+  qeUndo = () => { S.forEach((x, k) => { if (B0[k]){ x.text = B0[k][0]; x.hl = B0[k][1]; } }); narrPv = pv0; };
+  qeEl = document.createElement('div'); qeEl.id = 'qeWrap';
+  qeEl.innerHTML = `<div id="qeBox" role="dialog" aria-label="Modifier les sous-titres"><div class="qeHd"><button type="button" id="qeNo">Annuler</button><strong id="qnH"></strong><button type="button" id="qeOk">OK</button></div><div class="qeNav"><button type="button" id="qnPrev" class="small">‹ Précédent</button><span id="qnAt"></span><button type="button" id="qnNext" class="small">Suivant ›</button></div><canvas id="qePv" aria-label="Aperçu du sous-titre"></canvas><label class="qeF"><span>Texte du sous-titre <em id="qnC"></em></span><textarea id="qnT" rows="3" autocapitalize="sentences"></textarea></label></div>`;
+  document.body.append(qeEl);
+  const ta = $('qnT'), D = storyD();
+  const cnt = () => { const n = ta.value.length, c = $('qnC'); c.textContent = `${n} / ${LIM.narr} car.`; c.classList.toggle('over', n > LIM.narr); };
+  const show = () => {
+    narrPv = cur; layersDirty = true; redraw();
+    ta.value = S[cur].text || ''; cnt();
+    $('qnH').textContent = `Sous-titre ${cur + 1} sur ${S.length}`;
+    const T = narrTimes(p, D)[cur]; $('qnAt').textContent = T ? `de ${fmtS(Math.round(T.from * 10) / 10)} à ${fmtS(Math.round(T.to * 10) / 10)}` : 'non affiché, faute de place';
+    $('qnPrev').disabled = cur <= 0; $('qnNext').disabled = cur >= S.length - 1;
+    qePaint();
+  };
+  ta.addEventListener('input', () => { S[cur].text = ta.value; narrPv = cur; layersDirty = true; redraw(); cnt(); qePaint(); }); /* l’aperçu suit la frappe */
+  const go = d => { const k = cur + d; if (k < 0 || k >= S.length) return; cur = k; show(); try { ta.focus(); const n = ta.value.length; ta.setSelectionRange(n, n); } catch(_){} };
+  ['qnPrev', 'qnNext'].forEach((id, j) => { const b = $(id); b.addEventListener('pointerdown', e => e.preventDefault()); b.addEventListener('mousedown', e => e.preventDefault()); b.onclick = () => go(j ? 1 : -1); }); /* le clavier reste ouvert */
+  $('qeNo').onclick = () => qeClose(true);
+  $('qeOk').onclick = () => { qeUndo = null; qeClose(false); layersDirty = true; redraw(); try { narrUI(true); } catch(_){} scheduleSave(); toast('Sous-titres modifiés.'); };
+  qeT0 = performance.now();
+  qeEl.addEventListener('pointerdown', e => { if (e.target !== qeEl) return; e.preventDefault(); if (performance.now() - qeT0 > 700) qeClose(true); });
+  ['mousedown', 'click'].forEach(t => qeEl.addEventListener(t, e => { if (e.target === qeEl) e.preventDefault(); }));
+  document.addEventListener('keydown', qeKey, true);
+  const v = window.visualViewport; if (v){ v.addEventListener('resize', qeFit); v.addEventListener('scroll', qeFit); } qeFit();
+  show();
+  try { ta.focus(); const n = ta.value.length; ta.setSelectionRange(n, n); } catch(_){}
+  setTimeout(() => { try { if (qeEl && document.activeElement === ta) $('qeBox').scrollIntoView({ block:'end' }); } catch(_){} }, 450);
+}
 
 $('spR').addEventListener('input', e => setSpR(parseInt(e.target.value, 10) / 100, true));
 $('spR').addEventListener('change', e => setSpR(parseInt(e.target.value, 10) / 100));
@@ -7512,9 +7665,10 @@ function narrUI(force){
   const S = p.narr, D = storyD(), list = $('narrList');
   const [a, b] = D ? narrWin(D) : [0, 0];
   const shown = D ? narrTimes(p, D).filter((T, i) => T && String(S[i].text || '').trim()).length : 0, cnt = S.filter(x => String(x.text || '').trim()).length;
-  $('narrNote').textContent = nvOn() ? 'Narration visuelle : les sous-titres sont répartis d’office sur le film, dans leur ordre, indépendamment des photos (le détail est dans la carte Film).' : montOn() && pages.length >= 2 ? montNarrNote(p) : D && b - a < 2 ? `Story de ${fmtS(D)} : trop courte pour placer un sous-titre entre le titre et « Plus d’infos ».`
+  const lastI = D ? (() => { let k = -1, t = -1; narrTimes(p, D).forEach((T, i) => { if (T && String(S[i].text || '').trim() && T.from > t){ t = T.from; k = i; } }); return k; })() : -1; /* version 207 : sous-titre qui termine la story */
+  $('narrNote').textContent = nvOn() ? 'Narration visuelle : les sous-titres sont répartis d’office sur le film, dans leur ordre, indépendamment des photos (le détail est dans la carte Film).' : montOn() && pages.length >= 2 ? montNarrNote(p) : D && !narrShowFix(b - a) ? `Story de ${fmtS(D)} : trop courte pour placer un sous-titre entre le titre et « Plus d’infos ».`
     : D
-    ? `${shown < cnt ? `La durée ne laisse la place qu’à ${shown} sous-titre${shown > 1 ? 's' : ''} : les autres ne s’affichent pas. ` : ''}Story de ${fmtS(D)} : titre de 0 à ${fmtS(TITLE_HOLD)}, sous-titres de ${fmtS(a)} à ${fmtS(b)}, chacun ${fmtS(NARR_SHOW)} à l’écran puis ${fmtS(NARR_GAP)} d’image seule (${narrWanted() || 1} conseillé${narrWanted() > 1 ? 's' : ''} pour cette durée)${moreOnNow() && D > MORE_SHORT ? `, « Plus d’infos » seul de ${fmtS(D - MORE_FROM_END)} à ${fmtS(D - MORE_FROM_END + MORE_SHOW)}, puis l’image seule` : ''}. Touchez un sous-titre pour le voir dans l’aperçu.`
+    ? `${shown < cnt ? `La durée ne laisse la place qu’à ${shown} sous-titre${shown > 1 ? 's' : ''} : ${cnt - shown > 1 ? `les ${cnt - shown} autres ne s’affichent pas` : 'le dernier ne s’affiche pas'}.${lastI >= 0 ? ` Le sous-titre ${lastI + 1} termine la story : vérifiez qu’il se suffit à lui-même.` : ''} ` : ''}Story de ${fmtS(D)} : titre de 0 à ${fmtS(TITLE_HOLD)}, sous-titres de ${fmtS(a)} à ${fmtS(b)}, chacun ${fmtS(Math.round(narrShowFix(b - a) * 10) / 10)} à l’écran puis ${fmtS(NARR_GAP)} d’image seule (${narrWanted() || 1} conseillé${narrWanted() > 1 ? 's' : ''} pour cette durée)${moreOnNow() && D > MORE_SHORT ? `, « Plus d’infos » seul de ${fmtS(D - MORE_FROM_END)} à ${fmtS(D - MORE_FROM_END + MORE_SHOW)}, puis l’image seule` : ''}. Touchez un sous-titre pour le voir dans l’aperçu.`
     : 'Les sous-titres s’affichent dans une vidéo ou dans un film photo (deux photos au moins). Vous pouvez les préparer dès maintenant.';
   $('narrBgSeg').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === settings.narrBg));
   $('narrOp').value = Math.round((settings.narrOp || 1) * 100); $('cNarrOp').textContent = `${Math.round((settings.narrOp || 1) * 100)} %`;
@@ -8875,7 +9029,7 @@ const TITLESPEC = `- "theme" = thématique du sujet en 1 à 3 mots (ex. "SANTÉ"
 - "text" = titre à la une, 100 caractères maximum, informatif et fort, qui tient sur 3 lignes courtes d’environ 30 caractères.
 - ${KEYSPEC}`;
 /* story : nombre de sous-titres narratifs selon la durée (un toutes les 5 s environ) */
-function narrWanted(){ if (nvOn()) return Math.min(8, Math.max(1, (pages.length - 1) * NV_KMAX)); if (story() && montOn() && pages.length >= 2) return Math.min(8, montNarrRoom()); const D = storyD(); if (!story() || !D) return 0; const [a, b] = narrWin(D); if (b - a < 2) return 0; return Math.max(1, Math.min(8, narrRoom(b - a), narrFit(a, b))); } /* vidéo courte : un seul sous-titre */
+function narrWanted(){ if (nvOn()) return Math.min(8, Math.max(1, (pages.length - 1) * NV_KMAX)); if (story() && montOn() && pages.length >= 2) return Math.min(8, montNarrRoom()); const D = storyD(); if (!story() || !D) return 0; const [a, b] = narrWin(D), room = narrPlanFix(8, a, b).length; if (!room) return 0; return Math.max(1, Math.min(8, room, narrFit(a, b))); } /* version 207 */ /* vidéo courte : un seul sous-titre */
 function narrSpec(n){ return `- "subs" = exactement ${n} sous-titres narratifs, affichés l’un après l’autre après le titre, qui racontent la suite de l’information dans l’ordre sans répéter le titre : chacun une phrase complète de ${ovNarrOn() ? 70 : 100} caractères maximum, avec ses "highlights" (0 à 2 mots-clés copiés EXACTEMENT depuis son texte, sans ponctuation autour).`; }
 /* ---------- version 122 : Claude remplit aussi l’accroche du style « Overlay » ---------- */
 const OV_ACCSPEC = `- "accroche" = petite ligne affichée au-dessus du titre, 28 caractères maximum, espaces compris (version 206) : soit une courte citation reprise MOT POUR MOT de l’article, entre guillemets « », soit le sujet ou le lieu en quelques mots. Elle ne répète pas le titre et n’en reprend pas les mots.`;
